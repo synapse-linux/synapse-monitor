@@ -1,0 +1,335 @@
+// SPDX-License-Identifier: MIT
+#include "monitor.h"
+
+#include <inttypes.h>
+#include <limits.h>
+#include <string.h>
+
+static void format_iec(uint64_t bytes, char *output, size_t output_size) {
+    static const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+    long double value = (long double)bytes;
+    size_t unit = 0U;
+    while (value >= 1024.0L && unit + 1U < sizeof(units) / sizeof(units[0])) {
+        value /= 1024.0L;
+        unit++;
+    }
+    if (unit == 0U) snprintf(output, output_size, "%" PRIu64 " %s", bytes, units[unit]);
+    else snprintf(output, output_size, "%.1Lf %s", value, units[unit]);
+}
+
+static void format_rate(uint64_t bytes, char *output, size_t output_size) {
+    char value[32];
+    format_iec(bytes, value, sizeof(value));
+    snprintf(output, output_size, "%s/s", value);
+}
+
+static void format_percent(uint64_t milli, char *output, size_t output_size) {
+    snprintf(output, output_size, "%" PRIu64 ".%03" PRIu64 "%%",
+             milli / 1000U, milli % 1000U);
+}
+
+static size_t rows_returned(const mon_report *report, const mon_options *options) {
+    return report->processes.count < options->limit
+        ? report->processes.count : options->limit;
+}
+
+static void render_summary_text(const mon_report *report) {
+    char cpu[32] = "unavailable";
+    char memory_used[32] = "unavailable";
+    char memory_total[32] = "unavailable";
+    char gpu[32] = "unavailable";
+    char disk_read[48] = "unavailable";
+    char disk_write[48] = "unavailable";
+    char net_receive[48] = "unavailable";
+    char net_transmit[48] = "unavailable";
+    if (report->cpu_available)
+        format_percent(report->cpu_busy_percent_milli, cpu, sizeof(cpu));
+    if (report->memory_available) {
+        format_iec(report->memory_used_bytes, memory_used, sizeof(memory_used));
+        format_iec(report->memory_total_bytes, memory_total, sizeof(memory_total));
+    }
+    if (report->gpu_available)
+        format_percent(report->gpu_busy_percent_milli, gpu, sizeof(gpu));
+    if (report->disk_available) {
+        format_rate(report->disk_read_bytes_per_second, disk_read, sizeof(disk_read));
+        format_rate(report->disk_write_bytes_per_second, disk_write, sizeof(disk_write));
+    }
+    if (report->network_available) {
+        format_rate(report->network_rx_bytes_per_second, net_receive,
+                    sizeof(net_receive));
+        format_rate(report->network_tx_bytes_per_second, net_transmit,
+                    sizeof(net_transmit));
+    }
+    printf("SYNAPSE MONITOR  read-only  sample=%" PRIu64 " ms\n",
+           report->sample_milliseconds);
+    printf("CPU %s (%u logical)  |  RAM %s / %s  |  GPU %s\n",
+           cpu, report->processor_count, memory_used, memory_total, gpu);
+    printf("DISK read %s write %s  |  NET receive %s transmit %s\n",
+           disk_read, disk_write, net_receive, net_transmit);
+    if (report->gpu_memory_available) {
+        char used[32], total[32];
+        format_iec(report->gpu_memory_used_bytes, used, sizeof(used));
+        format_iec(report->gpu_memory_total_bytes, total, sizeof(total));
+        printf("GPU memory %s / %s (card %u)\n", used, total, report->gpu_card);
+    }
+}
+
+static void render_table_header(uint32_t columns) {
+    if (columns & MON_COLUMN_NAME) printf("%-24s", "NAME");
+    if (columns & MON_COLUMN_PID) printf(" %7s", "PID");
+    if (columns & MON_COLUMN_USER) printf(" %7s", "USER");
+    if (columns & MON_COLUMN_STATE) printf(" %5s", "STATE");
+    if (columns & MON_COLUMN_THREADS) printf(" %7s", "THREADS");
+    if (columns & MON_COLUMN_CPU) printf(" %10s", "CPU");
+    if (columns & MON_COLUMN_MEMORY) printf(" %11s", "MEMORY");
+    if (columns & MON_COLUMN_READ) printf(" %12s", "READ");
+    if (columns & MON_COLUMN_WRITE) printf(" %12s", "WRITE");
+    fputc('\n', stdout);
+}
+
+static void render_process_text(const mon_process *process, uint32_t columns) {
+    char user[16] = "-";
+    char cpu[32] = "-";
+    char memory[32];
+    char read_rate[48] = "-";
+    char write_rate[48] = "-";
+    if (process->uid_available) snprintf(user, sizeof(user), "%u", process->uid);
+    if (process->cpu_available)
+        format_percent(process->cpu_percent_milli, cpu, sizeof(cpu));
+    format_iec(process->resident_bytes, memory, sizeof(memory));
+    if (process->io_available && process->existed_for_sample) {
+        format_rate(process->read_bytes_per_second, read_rate, sizeof(read_rate));
+        format_rate(process->write_bytes_per_second, write_rate, sizeof(write_rate));
+    }
+    if (columns & MON_COLUMN_NAME) printf("%-24.24s", process->name);
+    if (columns & MON_COLUMN_PID) printf(" %7d", process->pid);
+    if (columns & MON_COLUMN_USER) printf(" %7s", user);
+    if (columns & MON_COLUMN_STATE) printf(" %5c", process->state);
+    if (columns & MON_COLUMN_THREADS) printf(" %7" PRIu64, process->threads);
+    if (columns & MON_COLUMN_CPU) printf(" %10s", cpu);
+    if (columns & MON_COLUMN_MEMORY) printf(" %11s", memory);
+    if (columns & MON_COLUMN_READ) printf(" %12s", read_rate);
+    if (columns & MON_COLUMN_WRITE) printf(" %12s", write_rate);
+    fputc('\n', stdout);
+}
+
+static bool same_group(const mon_process *left, const mon_process *right,
+                       mon_group group) {
+    if (group == MON_GROUP_CLASS) return left->process_class == right->process_class;
+    if (group == MON_GROUP_NAME) return strcmp(left->name, right->name) == 0;
+    return true;
+}
+
+static const char *class_title(mon_process_class process_class) {
+    switch (process_class) {
+        case MON_CLASS_SYSTEM: return "SYSTEM PROCESSES";
+        case MON_CLASS_KERNEL: return "KERNEL TASKS";
+        case MON_CLASS_APPLICATION:
+        default: return "APPLICATION PROCESSES";
+    }
+}
+
+static void render_group_header(const mon_report *report, size_t index,
+                                size_t returned, mon_group group) {
+    const mon_process *process = &report->processes.rows[index];
+    size_t count = 1U;
+    while (index + count < returned
+           && same_group(process, &report->processes.rows[index + count], group))
+        count++;
+    if (group == MON_GROUP_CLASS)
+        printf("\n[%s · %zu]\n", class_title(process->process_class), count);
+    else if (group == MON_GROUP_NAME)
+        printf("\n[%s · %zu process%s]\n", process->name, count,
+               count == 1U ? "" : "es");
+}
+
+static int render_text(const mon_report *report, const mon_options *options) {
+    size_t returned = rows_returned(report, options);
+    render_summary_text(report);
+    printf("\nFilter: %s  |  Sort: %s  |  Group: %s  |  Rows: %zu/%zu\n",
+           options->filter[0] ? options->filter : "(none)",
+           mon_sort_id(options->sort), mon_group_id(options->group), returned,
+           report->matched_rows);
+    if (returned == 0U) {
+        fputs("\nNo matching processes.\n", stdout);
+    } else {
+        for (size_t i = 0U; i < returned; i++) {
+            bool new_group = options->group != MON_GROUP_NONE
+                && (i == 0U || !same_group(&report->processes.rows[i - 1U],
+                                           &report->processes.rows[i],
+                                           options->group));
+            if (new_group) {
+                render_group_header(report, i, returned, options->group);
+                render_table_header(options->columns);
+            } else if (i == 0U) render_table_header(options->columns);
+            render_process_text(&report->processes.rows[i], options->columns);
+        }
+    }
+    printf("\nCoverage: proc=%zu/%zu denied=%zu vanished=%zu malformed=%zu "
+           "io-unavailable=%zu truncated=%s\n",
+           report->observed_rows, report->processes.numeric_directories,
+           report->processes.permission_denied, report->processes.vanished,
+           report->processes.malformed, report->processes.io_unavailable,
+           report->processes.truncated ? "true" : "false");
+    fputs("Controls are inspection-only; no process mutation is available.\n", stdout);
+    return ferror(stdout) ? 1 : 0;
+}
+
+static void json_string(const char *value) {
+    fputc('"', stdout);
+    for (const unsigned char *cursor = (const unsigned char *)value; *cursor; cursor++) {
+        switch (*cursor) {
+            case '"': fputs("\\\"", stdout); break;
+            case '\\': fputs("\\\\", stdout); break;
+            case '\b': fputs("\\b", stdout); break;
+            case '\f': fputs("\\f", stdout); break;
+            case '\n': fputs("\\n", stdout); break;
+            case '\r': fputs("\\r", stdout); break;
+            case '\t': fputs("\\t", stdout); break;
+            default:
+                if (*cursor < 0x20U) printf("\\u%04x", (unsigned)*cursor);
+                else fputc((int)*cursor, stdout);
+                break;
+        }
+    }
+    fputc('"', stdout);
+}
+
+static void json_u64(const char *name, uint64_t value, bool comma) {
+    printf("%s\"%s\":%" PRIu64, comma ? "," : "", name, value);
+}
+
+static void render_columns_json(uint32_t columns) {
+    struct column { uint32_t flag; const char *id; } values[] = {
+        {MON_COLUMN_NAME, "name"}, {MON_COLUMN_PID, "pid"},
+        {MON_COLUMN_USER, "user"}, {MON_COLUMN_STATE, "state"},
+        {MON_COLUMN_THREADS, "threads"}, {MON_COLUMN_CPU, "cpu"},
+        {MON_COLUMN_MEMORY, "memory"}, {MON_COLUMN_READ, "read"},
+        {MON_COLUMN_WRITE, "write"}
+    };
+    fputc('[', stdout);
+    bool first = true;
+    for (size_t i = 0U; i < sizeof(values) / sizeof(values[0]); i++) {
+        if ((columns & values[i].flag) == 0U) continue;
+        if (!first) fputc(',', stdout);
+        json_string(values[i].id);
+        first = false;
+    }
+    fputc(']', stdout);
+}
+
+static void render_available_u64(const char *name, bool available, uint64_t value,
+                                 bool comma) {
+    printf("%s\"%s\":", comma ? "," : "", name);
+    if (available) printf("%" PRIu64, value);
+    else fputs("null", stdout);
+}
+
+static int render_json(const mon_report *report, const mon_options *options) {
+    size_t returned = rows_returned(report, options);
+    fputs("{\"schema\":\"synapse.monitor.snapshot/v1\",\"readOnly\":true", stdout);
+    json_u64("sampledMilliseconds", report->sample_milliseconds, true);
+    fputs(",\"selection\":{\"sort\":", stdout);
+    json_string(mon_sort_id(options->sort));
+    fputs(",\"group\":", stdout);
+    json_string(mon_group_id(options->group));
+    fputs(",\"filter\":", stdout);
+    json_string(options->filter);
+    json_u64("limit", options->limit, true);
+    fputs(",\"columns\":", stdout);
+    render_columns_json(options->columns);
+
+    printf("},\"summary\":{\"cpu\":{\"available\":%s",
+           report->cpu_available ? "true" : "false");
+    render_available_u64("busyPercentMilli", report->cpu_available,
+                         report->cpu_busy_percent_milli, true);
+    json_u64("logicalProcessors", report->processor_count, true);
+    printf("},\"memory\":{\"available\":%s",
+           report->memory_available ? "true" : "false");
+    render_available_u64("totalBytes", report->memory_available,
+                         report->memory_total_bytes, true);
+    render_available_u64("availableBytes", report->memory_available,
+                         report->memory_available_bytes, true);
+    render_available_u64("usedBytes", report->memory_available,
+                         report->memory_used_bytes, true);
+    printf("},\"gpu\":{\"available\":%s",
+           report->gpu_available ? "true" : "false");
+    render_available_u64("card", report->gpu_available, report->gpu_card, true);
+    render_available_u64("busyPercentMilli", report->gpu_available,
+                         report->gpu_busy_percent_milli, true);
+    printf(",\"memoryAvailable\":%s", report->gpu_memory_available ? "true" : "false");
+    render_available_u64("memoryUsedBytes", report->gpu_memory_available,
+                         report->gpu_memory_used_bytes, true);
+    render_available_u64("memoryTotalBytes", report->gpu_memory_available,
+                         report->gpu_memory_total_bytes, true);
+    printf("},\"disk\":{\"available\":%s",
+           report->disk_available ? "true" : "false");
+    render_available_u64("readBytesPerSecond", report->disk_available,
+                         report->disk_read_bytes_per_second, true);
+    render_available_u64("writeBytesPerSecond", report->disk_available,
+                         report->disk_write_bytes_per_second, true);
+    json_u64("devices", report->disk_devices, true);
+    json_u64("devicesSkipped", report->disk_devices_skipped, true);
+    printf(",\"truncated\":%s", report->disk_truncated ? "true" : "false");
+    printf("},\"network\":{\"available\":%s",
+           report->network_available ? "true" : "false");
+    render_available_u64("receiveBytesPerSecond", report->network_available,
+                         report->network_rx_bytes_per_second, true);
+    render_available_u64("transmitBytesPerSecond", report->network_available,
+                         report->network_tx_bytes_per_second, true);
+    json_u64("interfaces", report->network_interfaces, true);
+    printf(",\"truncated\":%s}}", report->network_truncated ? "true" : "false");
+
+    fputs(",\"coverage\":{", stdout);
+    json_u64("directoriesSeen", report->processes.directories_seen, false);
+    json_u64("numericDirectories", report->processes.numeric_directories, true);
+    json_u64("rowsObserved", report->observed_rows, true);
+    json_u64("rowsMatched", report->matched_rows, true);
+    json_u64("rowsReturned", returned, true);
+    json_u64("permissionDenied", report->processes.permission_denied, true);
+    json_u64("vanished", report->processes.vanished, true);
+    json_u64("malformed", report->processes.malformed, true);
+    json_u64("ioUnavailable", report->processes.io_unavailable, true);
+    printf(",\"truncated\":%s},\"rows\":[",
+           report->processes.truncated ? "true" : "false");
+    for (size_t i = 0U; i < returned; i++) {
+        const mon_process *process = &report->processes.rows[i];
+        if (i > 0U) fputc(',', stdout);
+        printf("{\"pid\":%d,\"uid\":", process->pid);
+        if (process->uid_available) printf("%u", process->uid);
+        else fputs("null", stdout);
+        fputs(",\"name\":", stdout);
+        json_string(process->name);
+        fputs(",\"class\":", stdout);
+        json_string(mon_class_id(process->process_class));
+        fputs(",\"groupKey\":", stdout);
+        if (options->group == MON_GROUP_CLASS)
+            json_string(mon_class_id(process->process_class));
+        else if (options->group == MON_GROUP_NAME) json_string(process->name);
+        else fputs("null", stdout);
+        printf(",\"state\":\"%c\"", process->state);
+        json_u64("threads", process->threads, true);
+        printf(",\"sampled\":%s", process->existed_for_sample ? "true" : "false");
+        render_available_u64("cpuPercentMilli", process->cpu_available,
+                             process->cpu_percent_milli, true);
+        json_u64("residentBytes", process->resident_bytes, true);
+        printf(",\"ioAvailable\":%s", process->io_available ? "true" : "false");
+        render_available_u64("readBytesPerSecond",
+                             process->io_available && process->existed_for_sample,
+                             process->read_bytes_per_second, true);
+        render_available_u64("writeBytesPerSecond",
+                             process->io_available && process->existed_for_sample,
+                             process->write_bytes_per_second, true);
+        fputc('}', stdout);
+    }
+    fputs("],\"semantics\":{\"processControl\":false,"
+          "\"commandLinesExposed\":false,\"pathsExposed\":false,"
+          "\"diskSectorBytes\":512,\"ratesAreSampleDeltas\":true}}\n", stdout);
+    return ferror(stdout) ? 1 : 0;
+}
+
+int mon_render_report(const mon_report *report, const mon_options *options) {
+    if (!report || !options) return 1;
+    return options->format == MON_FORMAT_JSON
+        ? render_json(report, options) : render_text(report, options);
+}
