@@ -355,10 +355,11 @@ static int render_connections_text(const mon_connection_snapshot *snapshot,
                    row->pid_available ? row->process : "unavailable");
         fputc('\n', stdout);
     }
-    printf("\n%sCoverage: rows=%zu denied=%zu malformed=%zu owner-fds=%zu "
-           "truncated=%s owner-truncated=%s%s\n",
+    printf("\n%sCoverage: rows=%zu denied=%zu malformed=%zu identity-unavailable=%zu "
+           "owner-fds=%zu truncated=%s owner-truncated=%s%s\n",
            muted(options), snapshot->rows_seen, snapshot->denied,
-           snapshot->malformed, snapshot->owner_fds_seen,
+           snapshot->malformed, snapshot->identity_unavailable,
+           snapshot->owner_fds_seen,
            snapshot->truncated ? "true" : "false",
            snapshot->owner_scan_truncated ? "true" : "false", reset(options));
     fputs("Endpoints are observed locally; no socket is opened and no connection control exists.\n",
@@ -376,10 +377,12 @@ static int render_connections_json(const mon_connection_snapshot *snapshot,
     json_columns(MON_VIEW_CONNECTIONS, options->columns);
     printf(",\"coverage\":{\"rowsSeen\":%zu,\"rowsMatched\":%zu,"
            "\"rowsReturned\":%zu,\"permissionDenied\":%zu,"
-           "\"malformed\":%zu,\"ownerFdsSeen\":%zu,\"truncated\":%s,"
+           "\"malformed\":%zu,\"identityUnavailable\":%zu,"
+           "\"ownerFdsSeen\":%zu,\"truncated\":%s,"
            "\"ownerScanTruncated\":%s},\"rows\":[",
            snapshot->rows_seen, snapshot->matched, snapshot->count,
-           snapshot->denied, snapshot->malformed, snapshot->owner_fds_seen,
+           snapshot->denied, snapshot->malformed,
+           snapshot->identity_unavailable, snapshot->owner_fds_seen,
            snapshot->truncated ? "true" : "false",
            snapshot->owner_scan_truncated ? "true" : "false");
     for (size_t i = 0U; i < snapshot->count; i++) {

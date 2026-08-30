@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0-alpha.5
+
+- Add the native `synapse-monitor-gui` adapter and responsive QML presentation for all six read-only views.
+- Discover and validate `synapse.monitor.presentation/v1` before starting any stream.
+- Own fixed argv and child lifetime natively; cap input at 2 MiB, bound stderr, require exact view/stream majors and contiguous zero-based sequence, and fail closed.
+- Reconcile table rows by PID/start ticks, service name, startup ID or socket inode while preserving unavailable values as null.
+- Add identity-revalidated graphical process inspection without command lines, environments, paths or descriptor targets.
+- Add responsive summaries, tables, nullable-history charts, complete GPU/thermal/fan detail and system-information cards.
+- Add generic global `monospace` inheritance plus provisional `en_US` and `it_IT` GUI catalogues.
+- Exclude zero-inode kernel connection rows from GUI reconciliation and report them explicitly as `identityUnavailable` coverage.
+- Add Qt contract tests, six-view offscreen rendering, hostile sequence/identity/null tests and guarded test-only backend override.
+- Preserve the independent C17 CLI/TUI, privacy boundary and complete absence of mutation authority.
+
 ## 0.4.0-alpha.4
 
 - Record physical acceptance that all required informational elements are present while retaining the terminal view as a deliberately rough diagnostic surface.

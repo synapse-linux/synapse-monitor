@@ -1,4 +1,4 @@
-# Alpha 4 requirements
+# Alpha 5 requirements
 
 ## Functional views
 
@@ -30,6 +30,14 @@
 - `MON-041`: expose stable read-only row identities for graphical reconciliation, including process PID/start ticks and connection socket inode.
 - `MON-042`: keep command templates and visual styling out of the core capability contract; translated labels and visual composition belong to the GUI.
 - `MON-043`: require a native adapter to own fixed argv, child lifetime, line caps and schema validation; QML must not construct commands or executable paths.
+- `MON-044`: provide a responsive graphical projection of all six informational views without reducing C17 CLI/TUI utility.
+- `MON-045`: validate the presentation contract before streaming and require exact view major, read-only flag, view ID, zero-based contiguous sequence and selected interval for every frame.
+- `MON-046`: reconcile processes by PID/start ticks, services by name, startup entries by ID and connections by non-zero socket inode.
+- `MON-047`: stop the child and present only a bounded generic error when framing, schema, sequence, identity or stderr validation fails.
+- `MON-048`: expose process inspection only through the native adapter and discard a response when PID/start ticks no longer match the selected row.
+- `MON-049`: render complete GPU, thermal, fan, disk and network availability without converting null to zero; chart nulls remain gaps.
+- `MON-050`: translate reviewed identifiers in QML and request generic global `monospace` without coupling the font family to color themes.
+- `MON-051`: omit zero-inode transient connection rows from graphical identity sets and report an explicit `identityUnavailable` coverage count.
 
 ## Safety and privacy
 
@@ -52,3 +60,7 @@
 - `MON-030`: keep public documentation independent from private behavioral research.
 - `MON-031`: require explicit authorization before packaging or installation.
 - `MON-032`: use guarded, hash-verified, compositor-tiled previews with bounded rollback.
+- `MON-052`: exercise native contract decoding, wrong majors, sequence gaps, duplicate identities, null-versus-zero and process-identity mismatch.
+- `MON-053`: render every graphical view offscreen at bounded full and compact sizes with zero QML runtime diagnostics.
+- `MON-054`: reject a GUI backend-path override unless explicit test authority is present; never expose that path to QML.
+- `MON-055`: treat the current two GUI catalogues as provisional and keep expansion to the pinned locale set as an independent release gate.

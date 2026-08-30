@@ -458,6 +458,7 @@ typedef struct {
     size_t rows_seen;
     size_t malformed;
     size_t denied;
+    size_t identity_unavailable;
     size_t owner_fds_seen;
     size_t matched;
     bool truncated;

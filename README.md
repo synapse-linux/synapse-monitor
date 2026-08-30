@@ -4,7 +4,7 @@ Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
 Its C17 core provides a dense terminal interface and versioned JSON contracts
 without requiring a graphical session.
 
-Alpha 4 retains the six accepted informational views and adds typed output contracts for a separate graphical presentation. Alpha 3 corrected the earlier GPU/thermal gap:
+Alpha 5 adds a first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
 
 1. **Processes** — bounded application, system and kernel groups with CPU,
    memory, I/O, state, thread, PID and user observations.
@@ -38,6 +38,10 @@ subprocess command, opens no network socket or listener, and sends no telemetry.
 make clean all test
 ```
 
+When the Qt 6 Core/Gui/QML/Quick/QuickControls2/Test SDK is available, `all`
+and `test` also build and qualify `synapse-monitor-gui`. `BUILD_GUI=0` keeps an
+explicit core-only build; `BUILD_GUI=1` fails closed when the GUI SDK is absent.
+
 ## Use
 
 ```bash
@@ -51,6 +55,7 @@ synapse-monitor snapshot --view connections --sort local
 synapse-monitor snapshot --view information
 synapse-monitor inspect --pid 1234 --format json
 synapse-monitor watch
+synapse-monitor-gui
 ```
 
 Interactive watch keys:
@@ -68,10 +73,18 @@ NDJSON frames with stable sequence and row identities for a native GUI adapter.
 Unknown views, formats, options, identifiers, duplicate columns and oversized
 inputs fail closed.
 
-QML remains presentation-only: it translates identifiers and chooses layout,
-typography, color and animation. A native adapter owns fixed argv, child-process
-lifetime, 2 MiB line bounds and schema validation. Details are in
-`docs/gui-contracts.md`.
+QML remains presentation-only: it translates identifiers and chooses responsive
+layout, typography, color, charts and accessibility. The native adapter discovers
+the sibling or installed C17 core without a shell; owns fixed argv and child
+lifetime; enforces the 2 MiB line cap, exact schema majors, contiguous sequence,
+stable identities and bounded stderr; and discards stale process inspection.
+The normal GUI has no executable-path option. An absolute backend override is
+accepted only with explicit test authority for isolated qualification.
+
+The GUI requests generic `monospace`, leaving the concrete global family to
+Fontconfig, and currently ships the same provisional `en_US` and `it_IT`
+catalogue boundary as other early Synapse GUIs. Expansion to the pinned locale
+set remains a release gate. Details are in `docs/gui-contracts.md`.
 
 Full paths, raw launch commands, authentication credentials, secrets and serial
 numbers remain private. Safe executable basenames, semantic source scopes,

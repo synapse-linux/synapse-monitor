@@ -840,6 +840,10 @@ static int collect_connection_file(const char *path, const char *protocol,
             snapshot->malformed++;
             continue;
         }
+        if (row.inode == 0U) {
+            snapshot->identity_unavailable++;
+            continue;
+        }
         (void)snprintf(row.state, sizeof(row.state), "%s",
                        connection_state(fields[3], tcp));
         if (reserve_connection(snapshot, capacity) != 0) {

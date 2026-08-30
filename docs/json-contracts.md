@@ -81,11 +81,12 @@ false.
 
 ## `synapse.monitor.connections/v1`
 
-Each connection row contains fixed protocol, a local socket-inode row identity,
-decoded local/remote endpoint, state, nullable owning PID and nullable sanitized
-process name. Coverage includes
-kernel rows, malformed input, denials, descriptor observations and owner-scan
-truncation. The semantics declare `socketOpened: false` and
+Each connection row contains fixed protocol, a non-zero local socket-inode row
+identity, decoded local/remote endpoint, state, nullable owning PID and nullable
+sanitized process name. Transient kernel rows whose inode is zero cannot satisfy
+the declared identity and are omitted. Coverage includes
+`identityUnavailable` for those rows plus kernel rows, malformed input, denials,
+descriptor observations and owner-scan truncation. The semantics declare `socketOpened: false` and
 `connectionControl: false`.
 
 Endpoints are local-session observations; no data is transmitted.

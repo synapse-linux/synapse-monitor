@@ -2,7 +2,7 @@
 
 ## Boundary
 
-`synapse-monitor` is one C17 executable with four internal layers:
+`synapse-monitor` is an independently useful C17 executable with four internal layers:
 
 1. **Probe** reads bounded local kernel pseudo-files from `/proc` and `/sys`.
 2. **Inventory** parses bounded service units, XDG autostart entries, socket
@@ -12,6 +12,16 @@
 4. **Presentation** renders deterministic `en_US` text, interactive terminal
    frames, locale-neutral JSON, capability discovery or bounded NDJSON full
    frames for a separate graphical adapter.
+
+`synapse-monitor-gui` is a separate native Qt executable with two additional
+layers:
+
+5. **Adapter** discovers only the sibling or installed core, owns fixed argv and
+   child lifetime, validates exact contract majors/framing/sequence/identities,
+   and publishes typed Qt values.
+6. **QML presentation** renders responsive translated views, nullable-history
+   charts, tables, detail cards and accessibility without receiving an
+   executable path or constructing a command.
 
 No observed input becomes a command, path argument or process-control request.
 Filters are bounded printable-ASCII matches. Views, columns, grouping, sorting,
@@ -32,7 +42,11 @@ layout and theme come from closed identifier sets.
   for optional `pci.ids` model lookup;
 - terminal and graphical performance history fixed to 60 samples;
 - graphical stream frames fixed to at most 2 MiB with strictly increasing
-  sequence metadata and blocking backpressure.
+  sequence metadata and blocking backpressure;
+- graphical stderr fixed to 32 KiB and capability/process-inspection documents
+  fixed to 256 KiB;
+- graphical row models fixed to the core's advertised 512-row maximum and
+  process inspection limited to one identity-revalidated child at a time.
 
 Test roots are disabled unless `SYNAPSE_MONITOR_ALLOW_TEST_ROOTS=1`. Every
 overridden root must be absolute and component-normalized.
@@ -87,8 +101,10 @@ argument-redaction marker and semantic `system|user autostart` location.
 
 TCP/UDP kernel tables are decoded in-process. Socket inodes are correlated with
 bounded `/proc/PID/fd` link observations and PID/start-time process inventory.
-The executable calls no socket API. Endpoint observations remain local output
-and are never transmitted.
+Rows whose transient kernel entry has inode zero are omitted because they cannot
+satisfy the declared stable identity; coverage reports them as
+`identityUnavailable`. The executable calls no socket API. Endpoint observations
+remain local output and are never transmitted.
 
 ### Process inspection
 
@@ -106,13 +122,19 @@ read. Host names, machine IDs and serial-number files are outside the contract.
 
 The core exposes `synapse.monitor.presentation/v1` capability discovery and
 one-view NDJSON streams. It exposes identifiers, units, availability and stable
-row identities but no command templates or visual styling. A native adapter
-owns fixed argv, child-process lifetime, framing and exact-major validation.
-QML owns only layout, translated labels, typography, color, animation and
-accessibility; it never constructs a command, argv or executable path.
+row identities but no command templates or visual styling. The Alpha 5 native
+adapter owns fixed argv, child-process lifetime, framing, exact-major validation,
+line/error caps, sequence checks and identity reconciliation. A backend override
+exists only behind explicit test authority; normal discovery considers the
+sibling and `/usr/bin/synapse-monitor` fixed locations.
+
+QML owns only layout, translated labels, generic typography, color, charts,
+animation and accessibility. It receives typed maps/models and never parses JSON
+or constructs a command, argv or executable path. Unavailable history remains a
+null chart gap; measured zero remains a numeric point.
 
 ## Authority
 
-Alpha 4 is inspection-only. There is deliberately no signal, kill, dump,
+Alpha 5 is inspection-only. There is deliberately no signal, kill, dump,
 priority, service/startup mutation, connection control, mount, cgroup mutation,
 privileged helper, subprocess execution, listener or telemetry interface.
