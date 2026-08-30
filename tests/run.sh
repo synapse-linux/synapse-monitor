@@ -3,7 +3,7 @@
 set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
-[[ $($binary --version) == 'synapse-monitor 0.2.0-alpha.2' ]]
+[[ $($binary --version) == 'synapse-monitor 0.3.0-alpha.3' ]]
 $binary --help | grep -Fq 'The command is read-only'
 
 work=$(mktemp -d)
@@ -16,10 +16,14 @@ usr=$root/usr
 run=$root/run
 home=$root/home
 mkdir -p "$proc/net" "$proc/sys/kernel" "$sys/class/block/sda/device" \
-  "$sys/class/drm/card0/device" "$sys/class/dmi/id" \
+  "$sys/class/drm/card0/device/hwmon/hwmon1" \
+  "$sys/class/drm/card1/device" "$sys/class/drm/card32/device" \
+  "$sys/class/hwmon/hwmon0" \
+  "$sys/class/hwmon/hwmon1" "$sys/class/hwmon/hwmon2" \
+  "$sys/class/thermal/thermal_zone0" "$sys/class/dmi/id" \
   "$sys/fs/cgroup/system.slice/demo.service" \
   "$etc/systemd/system/multi-user.target.wants" \
-  "$usr/lib/systemd/system" "$run/systemd/system" \
+  "$usr/lib/systemd/system" "$usr/share/hwdata" "$run/systemd/system" \
   "$etc/xdg/autostart" "$home/.config/autostart"
 
 python3 - "$proc" "$sys" <<'PY'
@@ -70,9 +74,36 @@ def write(phase):
 os.makedirs(proc,exist_ok=True)
 atomic(os.path.join(proc,'meminfo'),'MemTotal:       1000000 kB\nMemAvailable:    400000 kB\n')
 write(0)
-atomic(os.path.join(sysp,'class/drm/card0/device/gpu_busy_percent'),'42\n')
-atomic(os.path.join(sysp,'class/drm/card0/device/mem_info_vram_total'),'1000000\n')
-atomic(os.path.join(sysp,'class/drm/card0/device/mem_info_vram_used'),'250000\n')
+gpu0=os.path.join(sysp,'class/drm/card0/device')
+atomic(os.path.join(gpu0,'vendor'),'0x1002\n')
+atomic(os.path.join(gpu0,'device'),'0x9999\n')
+atomic(os.path.join(gpu0,'uevent'),'DRIVER=amdgpu\nPCI_ID=1002:9999\n')
+atomic(os.path.join(gpu0,'gpu_busy_percent'),'42\n')
+atomic(os.path.join(gpu0,'mem_info_vram_total'),'1000000\n')
+atomic(os.path.join(gpu0,'mem_info_vram_used'),'250000\n')
+gpuh=os.path.join(gpu0,'hwmon/hwmon1')
+for name,value in {
+ 'name':'amdgpu\n','temp1_input':'55000\n','temp1_label':'edge\n',
+ 'temp2_input':'65000\n','temp2_label':'junction\n','freq1_input':'700000000\n',
+ 'freq2_input':'1000000000\n','power1_average':'32000000\n',
+ 'power1_cap':'45000000\n','fan1_input':'1800\n'}.items():atomic(os.path.join(gpuh,name),value)
+gpu1=os.path.join(sysp,'class/drm/card1/device')
+atomic(os.path.join(gpu1,'vendor'),'0x8086\n')
+atomic(os.path.join(gpu1,'device'),'0x191e\n')
+atomic(os.path.join(gpu1,'uevent'),'DRIVER=i915\nPCI_ID=8086:191E\n')
+for base,values in {
+ 'hwmon0':{'name':'coretemp\n','temp1_input':'48000\n','temp1_label':'Package id 0\n',
+           'temp1_max':'100000\n','temp1_crit':'105000\n','temp2_input':'47000\n',
+           'temp2_label':'Core 0\n','temp3_input':'999999\n',
+           'temp4_input':'-5000\n','temp4_label':'Core 1\x01private\n'},
+ 'hwmon1':{'name':'amdgpu\n','temp1_input':'55000\n','temp1_label':'edge\n',
+           'fan1_input':'1800\n','fan1_label':'GPU fan\n'},
+ 'hwmon2':{'name':'nvme\n','temp1_input':'39850\n','temp1_label':'Composite\n',
+           'temp1_max':'85850\n','temp1_crit':'87850\n',
+           'temp33_input':'40000\n','fan33_input':'1000\n'}}.items():
+    for name,value in values.items():atomic(os.path.join(sysp,'class/hwmon',base,name),value)
+atomic(os.path.join(sysp,'class/thermal/thermal_zone0/type'),'x86_pkg_temp\n')
+atomic(os.path.join(sysp,'class/thermal/thermal_zone0/temp'),'48000\n')
 with open(os.path.join(proc,'.advance.py'),'w') as h:
     h.write('')
 PY
@@ -147,6 +178,7 @@ printf 'TestBook1,1\n' >"$sys/class/dmi/id/product_name"
 printf 'Firmware Vendor\n' >"$sys/class/dmi/id/bios_vendor"
 printf '1.2.3\n' >"$sys/class/dmi/id/bios_version"
 printf '08/30/2026\n' >"$sys/class/dmi/id/bios_date"
+printf '1002  Advanced Micro Devices, Inc.\n\t9999  Test Graphics Adapter\n8086  Intel Corporation\n\t191e  Skylake-Y GT2 [HD Graphics 515]\n' >"$usr/share/hwdata/pci.ids"
 
 reset_sample() {
   python3 - "$proc" <<'PY'
@@ -208,7 +240,8 @@ x=json.loads(raw)
 assert x['schema']=='synapse.monitor.snapshot/v1' and x['readOnly'] is True
 assert x['summary']['cpu']['available'] and x['summary']['cpu']['busyPercentMilli']==30000
 assert x['summary']['memory']=={'available':True,'totalBytes':1024000000,'availableBytes':409600000,'usedBytes':614400000}
-assert x['summary']['gpu']['available'] and x['summary']['gpu']['busyPercentMilli']==42000
+assert x['summary']['gpu']['present'] and x['summary']['gpu']['available']
+assert x['summary']['gpu']['busyPercentMilli']==42000
 assert x['summary']['disk']['available'] and x['summary']['disk']['readBytesPerSecond']>0 and x['summary']['disk']['writeBytesPerSecond']>0
 assert x['summary']['network']['available'] and x['summary']['network']['receiveBytesPerSecond']>0
 assert x['coverage']['rowsObserved']==3 and x['coverage']['rowsMatched']==3 and x['coverage']['malformed']==1
@@ -228,10 +261,32 @@ $binary snapshot --view performance --format json --sample-ms 100 \
 wait
 python3 - "$work/performance.json" <<'PY'
 import json,sys
-x=json.load(open(sys.argv[1]))
-assert x['schema']=='synapse.monitor.performance/v1' and x['view']=='performance'
+raw=open(sys.argv[1]).read();x=json.loads(raw)
+assert x['schema']=='synapse.monitor.performance/v2' and x['view']=='performance'
+assert '/sys/' not in raw and '/usr/share/' not in raw
 assert x['cpu']['logicalProcessorCount']==2
 assert x['cpu']['logicalProcessors']==[30000,30000]
+assert x['gpus']['rowsObserved']==2 and x['gpus']['truncated'] is True
+assert x['gpus']['integratedGpuTemperatureInferred'] is False
+amd,intel=x['gpus']['rows']
+assert amd['vendor']=='AMD' and amd['driver']=='amdgpu' and amd['model']=='Test Graphics Adapter'
+assert amd['utilizationPercentMilli']==42000 and amd['memoryUsedBytes']==250000
+assert amd['temperatureMillidegreesCelsius']==65000 and amd['temperatureLabel']=='junction'
+assert amd['coreClockHz']==700000000 and amd['memoryClockHz']==1000000000
+assert amd['powerMicrowatts']==32000000 and amd['powerCapMicrowatts']==45000000
+assert amd['fanRpm']==1800 and amd['memoryKind']=='driver-reported-vram'
+assert intel['vendor']=='Intel' and intel['driver']=='i915' and intel['memoryKind']=='shared'
+assert intel['model']=='Skylake-Y GT2 [HD Graphics 515]'
+assert intel['utilizationPercentMilli'] is None and intel['temperatureMillidegreesCelsius'] is None
+classes={r['class'] for r in x['thermals']['temperatures']}
+assert {'cpu-package','cpu-core','gpu','storage'} <= classes
+pkg=next(r for r in x['thermals']['temperatures'] if r['class']=='cpu-package')
+assert pkg['temperatureMillidegreesCelsius']==48000 and pkg['criticalMillidegreesCelsius']==105000
+cold=next(r for r in x['thermals']['temperatures'] if r['temperatureMillidegreesCelsius']==-5000)
+assert cold['class']=='cpu-core' and cold['label']=='Core 1?private'
+assert x['thermals']['fans'][0]['rpm']==1800
+assert x['thermals']['malformed']>=1 and x['thermals']['temperatureTruncated'] is True
+assert x['thermals']['fanTruncated'] is True
 assert [r['name'] for r in x['disks']['rows']]==['sda']
 assert [r['name'] for r in x['network']['rows']]==['eth0']
 assert x['semantics']['telemetry'] is False and 'rows' not in x
@@ -370,7 +425,7 @@ os.write(fd,b'd');time.sleep(0.05);os.write(fd,b'emo\r');until(b'Filter: demo')
 os.write(fd,b'4');until(b'STARTUP APPS')
 os.write(fd,b'5');until(b'CONNECTIONS')
 os.write(fd,b'6');until(b'SYSTEM INFORMATION')
-os.write(fd,b'2');until(b'PERFORMANCE')
+os.write(fd,b'2');until(b'PERFORMANCE');until(b'GRAPHICS PROCESSORS');until(b'TEMPERATURES')
 os.write(fd,b'Q')
 end=time.monotonic()+5
 status=None

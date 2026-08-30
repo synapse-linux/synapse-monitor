@@ -1,8 +1,20 @@
 # Changelog
 
+## 0.3.0-alpha.3
+
+- Correct Alpha 2's missing GPU-parameter and thermal coverage.
+- Inventory up to 16 GPUs even when their drivers expose no utilization metric.
+- Add GPU vendor/device IDs, driver, optional local PCI model label and independently nullable utilization,
+  driver-reported VRAM, temperature, core/memory clocks, power/cap and fan RPM.
+- Add bounded CPU-package/core, GPU, storage, battery and system temperatures,
+  optional maximum/critical thresholds and general fan RPM observations.
+- Add sensor denial, malformed-input and truncation coverage.
+- Never infer an integrated-GPU temperature from CPU-package temperature.
+- Emit `synapse.monitor.performance/v2` with fixed units and explicit nulls.
+
 ## 0.2.0-alpha.2
 
-- Add complete read-only Processes, Performance, Services, Startup Apps,
+- Add six read-only Processes, Performance, Services, Startup Apps,
   Connections and System Information views.
 - Add logical-CPU, per-disk and per-interface detail with bounded 60-sample
   terminal history.

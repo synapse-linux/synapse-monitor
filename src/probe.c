@@ -417,45 +417,757 @@ static bool read_sysfs_u64(const char *path, uint64_t maximum, uint64_t *value) 
     return true;
 }
 
-static void probe_gpu(const mon_roots *roots, mon_host_sample *sample) {
-    for (unsigned card = 0U; card < 16U; card++) {
-        const char *busy_names[] = {"gpu_busy_percent", "gt_busy_percent"};
-        for (size_t i = 0U; i < sizeof(busy_names) / sizeof(busy_names[0]); i++) {
-            char suffix[256];
-            char path[MON_PATH_MAX];
-            int written = snprintf(suffix, sizeof(suffix),
-                                   "/class/drm/card%u/device/%s", card,
-                                   busy_names[i]);
-            if (written < 0 || (size_t)written >= sizeof(suffix)
-                || join_path(path, sizeof(path), roots->sys_root, suffix) != 0) continue;
-            uint64_t percent = 0U;
-            if (!read_sysfs_u64(path, 100U, &percent)) continue;
-            sample->gpu_available = true;
-            sample->gpu_card = card;
-            sample->gpu_busy_percent_milli = percent * 1000U;
+static bool parse_i64_exact(const char *text, int64_t *value) {
+    if (!text || !*text || !value) return false;
+    const unsigned char *cursor = (const unsigned char *)text;
+    if (*cursor == '-') cursor++;
+    if (!isdigit(*cursor)) return false;
+    for (; *cursor; cursor++) if (!isdigit(*cursor)) return false;
+    errno = 0;
+    char *end = NULL;
+    long long parsed = strtoll(text, &end, 10);
+    if (errno || end == text || *end != '\0') return false;
+    *value = (int64_t)parsed;
+    return true;
+}
 
-            written = snprintf(suffix, sizeof(suffix),
-                               "/class/drm/card%u/device/mem_info_vram_total", card);
-            if (written >= 0 && (size_t)written < sizeof(suffix)
-                && join_path(path, sizeof(path), roots->sys_root, suffix) == 0) {
-                uint64_t total = 0U;
-                if (read_sysfs_u64(path, UINT64_MAX, &total)) {
-                    written = snprintf(suffix, sizeof(suffix),
-                                       "/class/drm/card%u/device/mem_info_vram_used",
-                                       card);
-                    uint64_t used = 0U;
-                    if (written >= 0 && (size_t)written < sizeof(suffix)
-                        && join_path(path, sizeof(path), roots->sys_root, suffix) == 0
-                        && read_sysfs_u64(path, UINT64_MAX, &used)) {
-                        sample->gpu_memory_available = true;
-                        sample->gpu_memory_total_bytes = total;
-                        sample->gpu_memory_used_bytes = used <= total ? used : total;
-                    }
-                }
+static bool read_sysfs_i64(const char *path, int64_t minimum, int64_t maximum,
+                           int64_t *value) {
+    size_t size = 0U;
+    char *text = read_bounded_file(path, 128U, &size);
+    (void)size;
+    if (!text) return false;
+    char *cursor = text;
+    while (*cursor == ' ' || *cursor == '\t') cursor++;
+    char *end = cursor + strlen(cursor);
+    while (end > cursor && isspace((unsigned char)end[-1])) *--end = '\0';
+    int64_t parsed = 0;
+    bool valid = parse_i64_exact(cursor, &parsed)
+        && parsed >= minimum && parsed <= maximum;
+    free(text);
+    if (!valid) {
+        errno = EINVAL;
+        return false;
+    }
+    *value = parsed;
+    return true;
+}
+
+static bool safe_sensor_character(unsigned char value) {
+    return isalnum(value) || value == ' ' || value == '_' || value == '-'
+        || value == '.' || value == '+' || value == '(' || value == ')'
+        || value == '[' || value == ']' || value == ',' || value == ':'
+        || value == '/' || value == '#';
+}
+
+static bool copy_safe_text(const char *text, char *output, size_t output_size) {
+    if (!text || !output || output_size < 2U) return false;
+    const char *start = text;
+    while (*start && isspace((unsigned char)*start)) start++;
+    const char *end = start + strlen(start);
+    while (end > start && isspace((unsigned char)end[-1])) end--;
+    size_t output_used = 0U;
+    for (const char *cursor = start;
+         cursor < end && output_used + 1U < output_size; cursor++) {
+        unsigned char value = (unsigned char)*cursor;
+        output[output_used++] = safe_sensor_character(value) ? (char)value : '?';
+    }
+    output[output_used] = '\0';
+    if (output_used == 0U) {
+        errno = EINVAL;
+        return false;
+    }
+    return true;
+}
+
+static bool read_safe_text(const char *path, char *output, size_t output_size) {
+    size_t size = 0U;
+    char *text = read_bounded_file(path, 512U, &size);
+    (void)size;
+    if (!text) return false;
+    bool valid = copy_safe_text(text, output, output_size);
+    free(text);
+    return valid;
+}
+
+static bool read_hex_id(const char *path, char output[8]) {
+    char value[32];
+    if (!read_safe_text(path, value, sizeof(value))) return false;
+    size_t length = strlen(value);
+    if (length < 3U || length > 7U || value[0] != '0' || value[1] != 'x') {
+        errno = EINVAL;
+        return false;
+    }
+    for (size_t i = 2U; i < length; i++) {
+        if (!isxdigit((unsigned char)value[i])) {
+            errno = EINVAL;
+            return false;
+        }
+        value[i] = (char)tolower((unsigned char)value[i]);
+    }
+    memcpy(output, value, length + 1U);
+    return true;
+}
+
+static bool ascii_contains(const char *text, const char *needle) {
+    if (!text || !needle || !*needle) return false;
+    size_t length = strlen(needle);
+    for (size_t offset = 0U; text[offset]; offset++) {
+        size_t i = 0U;
+        while (i < length && text[offset + i]
+               && tolower((unsigned char)text[offset + i])
+                  == tolower((unsigned char)needle[i])) i++;
+        if (i == length) return true;
+    }
+    return false;
+}
+
+static int make_sysfs_path(const mon_roots *roots, char *path, size_t path_size,
+                           const char *format, unsigned first, unsigned second) {
+    char suffix[256];
+    int written = snprintf(suffix, sizeof(suffix), format, first, second);
+    if (written < 0 || (size_t)written >= sizeof(suffix)) return -1;
+    return join_path(path, path_size, roots->sys_root, suffix);
+}
+
+static int make_gpu_path(const mon_roots *roots, char *path, size_t path_size,
+                         unsigned card, const char *name) {
+    char suffix[256];
+    int written = snprintf(suffix, sizeof(suffix), "/class/drm/card%u/device/%s",
+                           card, name);
+    if (written < 0 || (size_t)written >= sizeof(suffix)) return -1;
+    return join_path(path, path_size, roots->sys_root, suffix);
+}
+
+static bool read_gpu_u64(const mon_roots *roots, unsigned card, const char *name,
+                         uint64_t maximum, uint64_t *value) {
+    char path[MON_PATH_MAX];
+    return make_gpu_path(roots, path, sizeof(path), card, name) == 0
+        && read_sysfs_u64(path, maximum, value);
+}
+
+static bool read_gpu_hwmon_u64(const mon_roots *roots, unsigned card,
+                               unsigned hwmon, const char *name,
+                               uint64_t maximum, uint64_t *value) {
+    char suffix[256];
+    char path[MON_PATH_MAX];
+    int written = snprintf(suffix, sizeof(suffix),
+                           "/class/drm/card%u/device/hwmon/hwmon%u/%s",
+                           card, hwmon, name);
+    return written >= 0 && (size_t)written < sizeof(suffix)
+        && join_path(path, sizeof(path), roots->sys_root, suffix) == 0
+        && read_sysfs_u64(path, maximum, value);
+}
+
+static bool read_gpu_hwmon_i64(const mon_roots *roots, unsigned card,
+                               unsigned hwmon, const char *name,
+                               int64_t minimum, int64_t maximum, int64_t *value) {
+    char suffix[256];
+    char path[MON_PATH_MAX];
+    int written = snprintf(suffix, sizeof(suffix),
+                           "/class/drm/card%u/device/hwmon/hwmon%u/%s",
+                           card, hwmon, name);
+    return written >= 0 && (size_t)written < sizeof(suffix)
+        && join_path(path, sizeof(path), roots->sys_root, suffix) == 0
+        && read_sysfs_i64(path, minimum, maximum, value);
+}
+
+static void probe_gpu_driver(const mon_roots *roots, mon_gpu *gpu) {
+    char path[MON_PATH_MAX];
+    if (make_gpu_path(roots, path, sizeof(path), gpu->card, "uevent") != 0) return;
+    size_t size = 0U;
+    char *text = read_bounded_file(path, 4096U, &size);
+    (void)size;
+    if (!text) return;
+    char *save = NULL;
+    for (char *line = strtok_r(text, "\n", &save); line;
+         line = strtok_r(NULL, "\n", &save)) {
+        if (strncmp(line, "DRIVER=", 7U) != 0 || !safe_kernel_name(line + 7U))
+            continue;
+        (void)snprintf(gpu->driver, sizeof(gpu->driver), "%s", line + 7U);
+        break;
+    }
+    free(text);
+}
+
+static int compare_unsigned(const void *left_value, const void *right_value) {
+    unsigned left = *(const unsigned *)left_value;
+    unsigned right = *(const unsigned *)right_value;
+    return left < right ? -1 : left > right ? 1 : 0;
+}
+
+static size_t gpu_hwmon_indices(const mon_roots *roots, unsigned card,
+                                unsigned indices[64]) {
+    char suffix[128];
+    char path[MON_PATH_MAX];
+    int written = snprintf(suffix, sizeof(suffix),
+                           "/class/drm/card%u/device/hwmon", card);
+    if (written < 0 || (size_t)written >= sizeof(suffix)
+        || join_path(path, sizeof(path), roots->sys_root, suffix) != 0) return 0U;
+    DIR *directory = opendir(path);
+    if (!directory) return 0U;
+    size_t count = 0U;
+    errno = 0;
+    for (struct dirent *entry = readdir(directory); entry;
+         entry = readdir(directory)) {
+        if (strncmp(entry->d_name, "hwmon", 5U) != 0) continue;
+        uint64_t index = 0U;
+        if (!parse_u64_exact(entry->d_name + 5U, &index)
+            || index >= MON_MAX_HWMON_DEVICES || count >= 64U) continue;
+        bool duplicate = false;
+        for (size_t i = 0U; i < count; i++)
+            if (indices[i] == (unsigned)index) duplicate = true;
+        if (!duplicate) indices[count++] = (unsigned)index;
+    }
+    (void)closedir(directory);
+    if (count > 1U) qsort(indices, count, sizeof(indices[0]), compare_unsigned);
+    return count;
+}
+
+static void probe_gpu_hwmon(const mon_roots *roots, mon_gpu *gpu) {
+    unsigned indices[64];
+    size_t count = gpu_hwmon_indices(roots, gpu->card, indices);
+    for (size_t index = 0U; index < count; index++) {
+        unsigned hwmon = indices[index];
+        char path[MON_PATH_MAX];
+        if (make_sysfs_path(roots, path, sizeof(path),
+                            "/class/drm/card%u/device/hwmon/hwmon%u/name",
+                            gpu->card, hwmon) != 0) continue;
+        char name[MON_NAME_MAX + 1U];
+        if (!read_safe_text(path, name, sizeof(name))) continue;
+        for (unsigned channel = 1U; channel <= MON_MAX_SENSOR_CHANNELS; channel++) {
+            char attribute[64];
+            int written = snprintf(attribute, sizeof(attribute), "temp%u_input",
+                                   channel);
+            int64_t temperature = 0;
+            if (written < 0 || (size_t)written >= sizeof(attribute)
+                || !read_gpu_hwmon_i64(roots, gpu->card, hwmon, attribute,
+                                       -100000, 250000, &temperature)) continue;
+            if (!gpu->temperature_available
+                || temperature > gpu->temperature_millidegrees_celsius) {
+                gpu->temperature_available = true;
+                gpu->temperature_millidegrees_celsius = temperature;
+                char suffix[256];
+                written = snprintf(suffix, sizeof(suffix),
+                    "/class/drm/card%u/device/hwmon/hwmon%u/temp%u_label",
+                    gpu->card, hwmon, channel);
+                if (written < 0 || (size_t)written >= sizeof(suffix)
+                    || join_path(path, sizeof(path), roots->sys_root, suffix) != 0
+                    || !read_safe_text(path, gpu->temperature_label,
+                                       sizeof(gpu->temperature_label)))
+                    (void)snprintf(gpu->temperature_label,
+                                   sizeof(gpu->temperature_label), "temperature");
             }
-            return;
+        }
+        uint64_t value = 0U;
+        if (!gpu->core_clock_available
+            && read_gpu_hwmon_u64(roots, gpu->card, hwmon, "freq1_input",
+                                  1000000000000000ULL, &value)) {
+            gpu->core_clock_available = true;
+            gpu->core_clock_hz = value;
+        }
+        if (!gpu->memory_clock_available
+            && read_gpu_hwmon_u64(roots, gpu->card, hwmon, "freq2_input",
+                                  1000000000000000ULL, &value)) {
+            gpu->memory_clock_available = true;
+            gpu->memory_clock_hz = value;
+        }
+        if (!gpu->power_available
+            && (read_gpu_hwmon_u64(roots, gpu->card, hwmon, "power1_average",
+                                   UINT64_MAX, &value)
+                || read_gpu_hwmon_u64(roots, gpu->card, hwmon, "power1_input",
+                                      UINT64_MAX, &value))) {
+            gpu->power_available = true;
+            gpu->power_microwatts = value;
+        }
+        if (!gpu->power_cap_available
+            && read_gpu_hwmon_u64(roots, gpu->card, hwmon, "power1_cap",
+                                  UINT64_MAX, &value)) {
+            gpu->power_cap_available = true;
+            gpu->power_cap_microwatts = value;
+        }
+        if (!gpu->fan_available
+            && read_gpu_hwmon_u64(roots, gpu->card, hwmon, "fan1_input",
+                                  1000000U, &value)) {
+            gpu->fan_available = true;
+            gpu->fan_rpm = value;
         }
     }
+}
+
+static void probe_one_gpu(const mon_roots *roots, mon_gpu *gpu) {
+    char path[MON_PATH_MAX];
+    if (make_gpu_path(roots, path, sizeof(path), gpu->card, "vendor") == 0)
+        (void)read_hex_id(path, gpu->vendor_id);
+    if (make_gpu_path(roots, path, sizeof(path), gpu->card, "device") == 0)
+        (void)read_hex_id(path, gpu->device_id);
+    probe_gpu_driver(roots, gpu);
+    const char *busy_names[] = {"gpu_busy_percent", "gt_busy_percent"};
+    for (size_t i = 0U; i < sizeof(busy_names) / sizeof(busy_names[0]); i++) {
+        uint64_t percent = 0U;
+        if (!read_gpu_u64(roots, gpu->card, busy_names[i], 100U, &percent))
+            continue;
+        gpu->utilization_available = true;
+        gpu->utilization_percent_milli = percent * 1000U;
+        break;
+    }
+    uint64_t total = 0U;
+    uint64_t used = 0U;
+    if (read_gpu_u64(roots, gpu->card, "mem_info_vram_total", UINT64_MAX, &total)
+        && read_gpu_u64(roots, gpu->card, "mem_info_vram_used", UINT64_MAX, &used)
+        && total > 0U) {
+        gpu->memory_available = true;
+        gpu->memory_total_bytes = total;
+        gpu->memory_used_bytes = used <= total ? used : total;
+    }
+    uint64_t megahertz = 0U;
+    char nested_current[64];
+    char nested_maximum[64];
+    (void)snprintf(nested_current, sizeof(nested_current),
+                   "drm/card%u/gt_cur_freq_mhz", gpu->card);
+    (void)snprintf(nested_maximum, sizeof(nested_maximum),
+                   "drm/card%u/gt_max_freq_mhz", gpu->card);
+    const char *clock_names[] = {
+        "gt_cur_freq_mhz", "rps_cur_freq_mhz", "gt/gt0/rps_cur_freq_mhz",
+        nested_current
+    };
+    for (size_t i = 0U; i < sizeof(clock_names) / sizeof(clock_names[0]); i++) {
+        if (!read_gpu_u64(roots, gpu->card, clock_names[i], 1000000U,
+                          &megahertz)) continue;
+        gpu->core_clock_available = true;
+        gpu->core_clock_hz = multiply_saturating(megahertz, 1000000U);
+        break;
+    }
+    const char *maximum_names[] = {
+        "gt_max_freq_mhz", "gt/gt0/rps_max_freq_mhz", nested_maximum
+    };
+    for (size_t i = 0U; i < sizeof(maximum_names) / sizeof(maximum_names[0]); i++) {
+        if (!read_gpu_u64(roots, gpu->card, maximum_names[i], 1000000U,
+                          &megahertz)) continue;
+        gpu->core_clock_max_available = true;
+        gpu->core_clock_max_hz = multiply_saturating(megahertz, 1000000U);
+        break;
+    }
+    probe_gpu_hwmon(roots, gpu);
+}
+
+static bool hex_identifier_line(const char *text) {
+    if (!text || strlen(text) < 4U) return false;
+    for (size_t i = 0U; i < 4U; i++)
+        if (!isxdigit((unsigned char)text[i])) return false;
+    return true;
+}
+
+static bool same_hex_identifier(const char *line, const char *sysfs_id) {
+    if (!line || !sysfs_id || strlen(sysfs_id) != 6U) return false;
+    for (size_t i = 0U; i < 4U; i++)
+        if (tolower((unsigned char)line[i])
+            != tolower((unsigned char)sysfs_id[i + 2U])) return false;
+    return true;
+}
+
+static bool gpu_models_complete(const mon_host_sample *sample) {
+    for (size_t i = 0U; i < sample->gpu_count; i++)
+        if (sample->gpus[i].model[0] == '\0') return false;
+    return true;
+}
+
+static void process_gpu_model_line(char *line, size_t length,
+                                   char current_vendor[5],
+                                   mon_host_sample *sample) {
+    line[length] = '\0';
+    if (length >= 6U && line[0] != '\t' && hex_identifier_line(line)
+        && line[4] == ' ' && line[5] == ' ') {
+        for (size_t i = 0U; i < 4U; i++)
+            current_vendor[i] = (char)tolower((unsigned char)line[i]);
+        current_vendor[4] = '\0';
+        return;
+    }
+    if (length < 6U || line[0] != '\t' || line[1] == '\t'
+        || !hex_identifier_line(line + 1U) || line[5] != ' '
+        || current_vendor[0] == '\0') return;
+    const char *description = line + 5U;
+    while (*description == ' ' || *description == '\t') description++;
+    for (size_t i = 0U; i < sample->gpu_count; i++) {
+        mon_gpu *gpu = &sample->gpus[i];
+        if (gpu->model[0] != '\0'
+            || !same_hex_identifier(current_vendor, gpu->vendor_id)
+            || !same_hex_identifier(line + 1U, gpu->device_id)) continue;
+        (void)copy_safe_text(description, gpu->model, sizeof(gpu->model));
+    }
+}
+
+static void probe_gpu_models_file(const char *path, mon_host_sample *sample) {
+    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) return;
+    char current_vendor[5] = "";
+    char line[512];
+    char input[4096];
+    size_t line_used = 0U;
+    size_t observed = 0U;
+    bool overlong = false;
+    while (observed < MON_PCI_IDS_LIMIT && !gpu_models_complete(sample)) {
+        size_t remaining = MON_PCI_IDS_LIMIT - observed;
+        size_t requested = remaining < sizeof(input) ? remaining : sizeof(input);
+        ssize_t count;
+        do count = read(descriptor, input, requested);
+        while (count < 0 && errno == EINTR);
+        if (count <= 0) break;
+        observed += (size_t)count;
+        for (ssize_t i = 0; i < count; i++) {
+            if (input[i] == '\n') {
+                if (!overlong)
+                    process_gpu_model_line(line, line_used, current_vendor, sample);
+                line_used = 0U;
+                overlong = false;
+                if (gpu_models_complete(sample)) break;
+            } else if (!overlong) {
+                if (line_used + 1U < sizeof(line)) line[line_used++] = input[i];
+                else overlong = true;
+            }
+        }
+    }
+    if (line_used > 0U && !overlong && !gpu_models_complete(sample))
+        process_gpu_model_line(line, line_used, current_vendor, sample);
+    (void)close(descriptor);
+}
+
+typedef struct {
+    char vendor_id[8];
+    char device_id[8];
+    char model[MON_LABEL_MAX + 1U];
+} mon_gpu_model_cache_entry;
+
+static char gpu_model_cache_root[MON_PATH_MAX];
+static mon_gpu_model_cache_entry gpu_model_cache[MON_MAX_GPUS];
+static size_t gpu_model_cache_count;
+
+static const mon_gpu_model_cache_entry *find_gpu_model_cache(const mon_gpu *gpu) {
+    for (size_t i = 0U; i < gpu_model_cache_count; i++)
+        if (strcmp(gpu_model_cache[i].vendor_id, gpu->vendor_id) == 0
+            && strcmp(gpu_model_cache[i].device_id, gpu->device_id) == 0)
+            return &gpu_model_cache[i];
+    return NULL;
+}
+
+static bool apply_gpu_model_cache(mon_host_sample *sample) {
+    for (size_t i = 0U; i < sample->gpu_count; i++) {
+        const mon_gpu_model_cache_entry *entry =
+            find_gpu_model_cache(&sample->gpus[i]);
+        if (!entry) return false;
+        (void)snprintf(sample->gpus[i].model, sizeof(sample->gpus[i].model),
+                       "%s", entry->model);
+    }
+    return true;
+}
+
+static void store_gpu_model_cache(const mon_host_sample *sample) {
+    for (size_t i = 0U; i < sample->gpu_count
+         && gpu_model_cache_count < MON_MAX_GPUS; i++) {
+        if (find_gpu_model_cache(&sample->gpus[i])) continue;
+        mon_gpu_model_cache_entry *entry =
+            &gpu_model_cache[gpu_model_cache_count++];
+        (void)snprintf(entry->vendor_id, sizeof(entry->vendor_id), "%s",
+                       sample->gpus[i].vendor_id);
+        (void)snprintf(entry->device_id, sizeof(entry->device_id), "%s",
+                       sample->gpus[i].device_id);
+        (void)snprintf(entry->model, sizeof(entry->model), "%s",
+                       sample->gpus[i].model);
+    }
+}
+
+static void probe_gpu_models(const mon_roots *roots, mon_host_sample *sample) {
+    if (strcmp(gpu_model_cache_root, roots->usr_root) != 0) {
+        memset(gpu_model_cache, 0, sizeof(gpu_model_cache));
+        gpu_model_cache_count = 0U;
+        (void)snprintf(gpu_model_cache_root, sizeof(gpu_model_cache_root), "%s",
+                       roots->usr_root);
+    }
+    if (apply_gpu_model_cache(sample)) return;
+    static const char *suffixes[] = {
+        "/share/hwdata/pci.ids", "/share/misc/pci.ids"
+    };
+    for (size_t i = 0U; i < sizeof(suffixes) / sizeof(suffixes[0]); i++) {
+        char path[MON_PATH_MAX];
+        if (join_path(path, sizeof(path), roots->usr_root, suffixes[i]) != 0)
+            continue;
+        probe_gpu_models_file(path, sample);
+        if (gpu_models_complete(sample)) break;
+    }
+    store_gpu_model_cache(sample);
+}
+
+static void probe_gpu(const mon_roots *roots, mon_host_sample *sample) {
+    for (unsigned card = 0U; card < 32U; card++) {
+        char suffix[128];
+        char path[MON_PATH_MAX];
+        int written = snprintf(suffix, sizeof(suffix),
+                               "/class/drm/card%u/device", card);
+        if (written < 0 || (size_t)written >= sizeof(suffix)
+            || join_path(path, sizeof(path), roots->sys_root, suffix) != 0)
+            continue;
+        struct stat status;
+        if (stat(path, &status) != 0 || !S_ISDIR(status.st_mode)) continue;
+        if (sample->gpu_count >= MON_MAX_GPUS) {
+            sample->gpu_truncated = true;
+            continue;
+        }
+        mon_gpu *gpu = &sample->gpus[sample->gpu_count++];
+        memset(gpu, 0, sizeof(*gpu));
+        gpu->card = card;
+        probe_one_gpu(roots, gpu);
+    }
+    probe_gpu_models(roots, sample);
+    char overflow_suffix[128];
+    char overflow_path[MON_PATH_MAX];
+    int overflow_written = snprintf(overflow_suffix, sizeof(overflow_suffix),
+                                    "/class/drm/card32/device");
+    struct stat overflow_status;
+    if (overflow_written >= 0
+        && (size_t)overflow_written < sizeof(overflow_suffix)
+        && join_path(overflow_path, sizeof(overflow_path), roots->sys_root,
+                     overflow_suffix) == 0
+        && stat(overflow_path, &overflow_status) == 0)
+        sample->gpu_truncated = true;
+    sample->gpu_present = sample->gpu_count > 0U;
+    if (!sample->gpu_present) return;
+    size_t summary = 0U;
+    for (size_t i = 0U; i < sample->gpu_count; i++) {
+        if (sample->gpus[i].utilization_available) {
+            summary = i;
+            break;
+        }
+    }
+    const mon_gpu *gpu = &sample->gpus[summary];
+    sample->gpu_card = gpu->card;
+    sample->gpu_available = gpu->utilization_available;
+    sample->gpu_busy_percent_milli = gpu->utilization_percent_milli;
+    sample->gpu_memory_available = gpu->memory_available;
+    sample->gpu_memory_used_bytes = gpu->memory_used_bytes;
+    sample->gpu_memory_total_bytes = gpu->memory_total_bytes;
+}
+
+static mon_thermal_class classify_temperature(const char *source,
+                                               const char *label) {
+    if (ascii_contains(source, "amdgpu") || ascii_contains(source, "i915")
+        || ascii_contains(source, "nouveau") || ascii_contains(source, "nvidia"))
+        return MON_THERMAL_GPU;
+    if (ascii_contains(source, "nvme") || ascii_contains(source, "drivetemp"))
+        return MON_THERMAL_STORAGE;
+    if (ascii_contains(source, "bat") || ascii_contains(label, "battery"))
+        return MON_THERMAL_BATTERY;
+    if (ascii_contains(source, "coretemp") || ascii_contains(source, "k10temp")
+        || ascii_contains(source, "zenpower") || ascii_contains(source, "cpu")
+        || ascii_contains(source, "x86_pkg_temp")) {
+        if (ascii_contains(label, "core")) return MON_THERMAL_CPU_CORE;
+        return MON_THERMAL_CPU_PACKAGE;
+    }
+    if (ascii_contains(label, "package")) return MON_THERMAL_CPU_PACKAGE;
+    if (ascii_contains(label, "core")) return MON_THERMAL_CPU_CORE;
+    return MON_THERMAL_SYSTEM;
+}
+
+static bool same_temperature_observation(const mon_host_sample *sample,
+                                         mon_thermal_class sensor_class,
+                                         int64_t value) {
+    if (sensor_class == MON_THERMAL_OTHER) return false;
+    for (size_t i = 0U; i < sample->temperature_count; i++) {
+        if (sample->temperatures[i].sensor_class != sensor_class) continue;
+        if (sensor_class == MON_THERMAL_CPU_PACKAGE
+            || sensor_class == MON_THERMAL_GPU
+            || sensor_class == MON_THERMAL_BATTERY
+            || sample->temperatures[i].temperature_millidegrees_celsius == value)
+            return true;
+    }
+    return false;
+}
+
+static void add_temperature(mon_host_sample *sample, const char *source,
+                            const char *label, int64_t value,
+                            bool maximum_available, int64_t maximum,
+                            bool critical_available, int64_t critical) {
+    mon_thermal_class sensor_class = classify_temperature(source, label);
+    if (sample->temperature_count >= MON_MAX_TEMPERATURES) {
+        sample->temperature_truncated = true;
+        return;
+    }
+    mon_temperature *temperature = &sample->temperatures[sample->temperature_count++];
+    memset(temperature, 0, sizeof(*temperature));
+    temperature->sensor_class = sensor_class;
+    (void)snprintf(temperature->source, sizeof(temperature->source), "%s", source);
+    (void)snprintf(temperature->label, sizeof(temperature->label), "%s", label);
+    temperature->temperature_millidegrees_celsius = value;
+    temperature->maximum_available = maximum_available;
+    temperature->maximum_millidegrees_celsius = maximum;
+    temperature->critical_available = critical_available;
+    temperature->critical_millidegrees_celsius = critical;
+}
+
+static void add_fan(mon_host_sample *sample, const char *source,
+                    const char *label, uint64_t rpm) {
+    if (sample->fan_count >= MON_MAX_FANS) {
+        sample->fan_truncated = true;
+        return;
+    }
+    mon_fan *fan = &sample->fans[sample->fan_count++];
+    (void)snprintf(fan->source, sizeof(fan->source), "%s", source);
+    (void)snprintf(fan->label, sizeof(fan->label), "%s", label);
+    fan->rpm = rpm;
+}
+
+static void probe_hwmon_temperatures(const mon_roots *roots,
+                                     mon_host_sample *sample) {
+    for (unsigned hwmon = 0U; hwmon < MON_MAX_HWMON_DEVICES; hwmon++) {
+        char path[MON_PATH_MAX];
+        if (make_sysfs_path(roots, path, sizeof(path),
+                            "/class/hwmon/hwmon%u/name", hwmon, 0U) != 0)
+            continue;
+        char source[MON_NAME_MAX + 1U];
+        if (!read_safe_text(path, source, sizeof(source))) continue;
+        sample->hwmon_devices_seen++;
+        for (unsigned channel = 1U; channel <= MON_MAX_SENSOR_CHANNELS; channel++) {
+            char suffix[256];
+            int written = snprintf(suffix, sizeof(suffix),
+                                   "/class/hwmon/hwmon%u/temp%u_input",
+                                   hwmon, channel);
+            if (written < 0 || (size_t)written >= sizeof(suffix)
+                || join_path(path, sizeof(path), roots->sys_root, suffix) != 0)
+                continue;
+            int64_t value = 0;
+            errno = 0;
+            if (!read_sysfs_i64(path, -100000, 250000, &value)) {
+                if (errno == EACCES || errno == EPERM)
+                    sample->sensor_permission_denied++;
+                else if (errno != ENOENT && errno != ENOTDIR)
+                    sample->sensor_malformed++;
+                continue;
+            }
+            char label[MON_SENSOR_LABEL_MAX + 1U];
+            written = snprintf(suffix, sizeof(suffix),
+                               "/class/hwmon/hwmon%u/temp%u_label",
+                               hwmon, channel);
+            if (written < 0 || (size_t)written >= sizeof(suffix)
+                || join_path(path, sizeof(path), roots->sys_root, suffix) != 0
+                || !read_safe_text(path, label, sizeof(label)))
+                (void)snprintf(label, sizeof(label), "temperature %u", channel);
+            int64_t maximum = 0;
+            int64_t critical = 0;
+            written = snprintf(suffix, sizeof(suffix),
+                               "/class/hwmon/hwmon%u/temp%u_max", hwmon, channel);
+            bool maximum_available = written >= 0
+                && (size_t)written < sizeof(suffix)
+                && join_path(path, sizeof(path), roots->sys_root, suffix) == 0
+                && read_sysfs_i64(path, -100000, 250000, &maximum);
+            written = snprintf(suffix, sizeof(suffix),
+                               "/class/hwmon/hwmon%u/temp%u_crit", hwmon, channel);
+            bool critical_available = written >= 0
+                && (size_t)written < sizeof(suffix)
+                && join_path(path, sizeof(path), roots->sys_root, suffix) == 0
+                && read_sysfs_i64(path, -100000, 250000, &critical);
+            add_temperature(sample, source, label, value, maximum_available,
+                            maximum, critical_available, critical);
+        }
+        char overflow_suffix[256];
+        int overflow_written = snprintf(overflow_suffix, sizeof(overflow_suffix),
+                                        "/class/hwmon/hwmon%u/temp33_input",
+                                        hwmon);
+        struct stat overflow_status;
+        if (overflow_written >= 0
+            && (size_t)overflow_written < sizeof(overflow_suffix)
+            && join_path(path, sizeof(path), roots->sys_root, overflow_suffix) == 0
+            && stat(path, &overflow_status) == 0)
+            sample->temperature_truncated = true;
+        for (unsigned channel = 1U; channel <= MON_MAX_SENSOR_CHANNELS; channel++) {
+            char suffix[256];
+            int written = snprintf(suffix, sizeof(suffix),
+                                   "/class/hwmon/hwmon%u/fan%u_input",
+                                   hwmon, channel);
+            if (written < 0 || (size_t)written >= sizeof(suffix)
+                || join_path(path, sizeof(path), roots->sys_root, suffix) != 0)
+                continue;
+            uint64_t rpm = 0U;
+            if (!read_sysfs_u64(path, 1000000U, &rpm)) continue;
+            char label[MON_SENSOR_LABEL_MAX + 1U];
+            written = snprintf(suffix, sizeof(suffix),
+                               "/class/hwmon/hwmon%u/fan%u_label",
+                               hwmon, channel);
+            if (written < 0 || (size_t)written >= sizeof(suffix)
+                || join_path(path, sizeof(path), roots->sys_root, suffix) != 0
+                || !read_safe_text(path, label, sizeof(label)))
+                (void)snprintf(label, sizeof(label), "fan %u", channel);
+            add_fan(sample, source, label, rpm);
+        }
+        overflow_written = snprintf(overflow_suffix, sizeof(overflow_suffix),
+                                    "/class/hwmon/hwmon%u/fan33_input", hwmon);
+        if (overflow_written >= 0
+            && (size_t)overflow_written < sizeof(overflow_suffix)
+            && join_path(path, sizeof(path), roots->sys_root, overflow_suffix) == 0
+            && stat(path, &overflow_status) == 0)
+            sample->fan_truncated = true;
+    }
+    char overflow_path[MON_PATH_MAX];
+    if (join_path(overflow_path, sizeof(overflow_path), roots->sys_root,
+                  "/class/hwmon/hwmon256/name") == 0) {
+        struct stat overflow_status;
+        if (stat(overflow_path, &overflow_status) == 0) {
+            sample->temperature_truncated = true;
+            sample->fan_truncated = true;
+        }
+    }
+}
+
+static void probe_thermal_zones(const mon_roots *roots,
+                                mon_host_sample *sample) {
+    for (unsigned zone = 0U; zone < MON_MAX_TEMPERATURES; zone++) {
+        char path[MON_PATH_MAX];
+        if (make_sysfs_path(roots, path, sizeof(path),
+                            "/class/thermal/thermal_zone%u/type", zone, 0U) != 0)
+            continue;
+        char type[MON_SENSOR_LABEL_MAX + 1U];
+        if (!read_safe_text(path, type, sizeof(type))) continue;
+        if (make_sysfs_path(roots, path, sizeof(path),
+                            "/class/thermal/thermal_zone%u/temp", zone, 0U) != 0)
+            continue;
+        int64_t value = 0;
+        if (!read_sysfs_i64(path, -100000, 250000, &value)) continue;
+        mon_thermal_class sensor_class = classify_temperature(type, type);
+        if (same_temperature_observation(sample, sensor_class, value)) continue;
+        add_temperature(sample, "thermal-zone", type, value, false, 0,
+                        false, 0);
+    }
+    char overflow_path[MON_PATH_MAX];
+    if (join_path(overflow_path, sizeof(overflow_path), roots->sys_root,
+                  "/class/thermal/thermal_zone256/type") == 0) {
+        struct stat overflow_status;
+        if (stat(overflow_path, &overflow_status) == 0)
+            sample->temperature_truncated = true;
+    }
+}
+
+static int compare_temperature(const void *left_value, const void *right_value) {
+    const mon_temperature *left = left_value;
+    const mon_temperature *right = right_value;
+    if (left->sensor_class < right->sensor_class) return -1;
+    if (left->sensor_class > right->sensor_class) return 1;
+    int compared = strcmp(left->source, right->source);
+    return compared != 0 ? compared : strcmp(left->label, right->label);
+}
+
+static int compare_fan(const void *left_value, const void *right_value) {
+    const mon_fan *left = left_value;
+    const mon_fan *right = right_value;
+    int compared = strcmp(left->source, right->source);
+    return compared != 0 ? compared : strcmp(left->label, right->label);
+}
+
+static void probe_thermals(const mon_roots *roots, mon_host_sample *sample) {
+    probe_hwmon_temperatures(roots, sample);
+    probe_thermal_zones(roots, sample);
+    if (sample->temperature_count > 1U)
+        qsort(sample->temperatures, sample->temperature_count,
+              sizeof(sample->temperatures[0]), compare_temperature);
+    if (sample->fan_count > 1U)
+        qsort(sample->fans, sample->fan_count, sizeof(sample->fans[0]), compare_fan);
 }
 
 int mon_probe_host(const mon_roots *roots, mon_host_sample *sample,
@@ -477,6 +1189,7 @@ int mon_probe_host(const mon_roots *roots, mon_host_sample *sample,
     probe_disk(roots, sample);
     probe_network(roots, sample);
     probe_gpu(roots, sample);
+    probe_thermals(roots, sample);
     return 0;
 }
 

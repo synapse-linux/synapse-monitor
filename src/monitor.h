@@ -19,6 +19,12 @@
 #define MON_MAX_CPUS 4096U
 #define MON_MAX_BLOCK_DEVICES 256U
 #define MON_MAX_INTERFACES 256U
+#define MON_MAX_GPUS 16U
+#define MON_MAX_TEMPERATURES 256U
+#define MON_MAX_FANS 128U
+#define MON_MAX_HWMON_DEVICES 256U
+#define MON_MAX_SENSOR_CHANNELS 32U
+#define MON_SENSOR_LABEL_MAX 96U
 #define MON_MAX_SERVICES 4096U
 #define MON_MAX_STARTUP_ITEMS 1024U
 #define MON_MAX_CONNECTIONS 4096U
@@ -33,6 +39,7 @@
 #define MON_NETDEV_LIMIT ((size_t)128U * 1024U)
 #define MON_CONNECTION_FILE_LIMIT ((size_t)512U * 1024U)
 #define MON_MAPS_FILE_LIMIT ((size_t)2U * 1024U * 1024U)
+#define MON_PCI_IDS_LIMIT ((size_t)4U * 1024U * 1024U)
 #define MON_SAMPLE_MIN_MS 100U
 #define MON_SAMPLE_MAX_MS 2000U
 #define MON_INTERVAL_MIN_MS 250U
@@ -171,6 +178,61 @@ typedef struct {
     uint64_t transmit_bytes;
 } mon_interface_counter;
 
+typedef enum {
+    MON_THERMAL_CPU_PACKAGE = 0,
+    MON_THERMAL_CPU_CORE,
+    MON_THERMAL_GPU,
+    MON_THERMAL_STORAGE,
+    MON_THERMAL_BATTERY,
+    MON_THERMAL_SYSTEM,
+    MON_THERMAL_OTHER
+} mon_thermal_class;
+
+typedef struct {
+    unsigned card;
+    char vendor_id[8];
+    char device_id[8];
+    char driver[MON_NAME_MAX + 1U];
+    char model[MON_LABEL_MAX + 1U];
+    bool utilization_available;
+    uint64_t utilization_percent_milli;
+    bool memory_available;
+    uint64_t memory_used_bytes;
+    uint64_t memory_total_bytes;
+    bool temperature_available;
+    int64_t temperature_millidegrees_celsius;
+    char temperature_label[MON_SENSOR_LABEL_MAX + 1U];
+    bool core_clock_available;
+    uint64_t core_clock_hz;
+    bool core_clock_max_available;
+    uint64_t core_clock_max_hz;
+    bool memory_clock_available;
+    uint64_t memory_clock_hz;
+    bool power_available;
+    uint64_t power_microwatts;
+    bool power_cap_available;
+    uint64_t power_cap_microwatts;
+    bool fan_available;
+    uint64_t fan_rpm;
+} mon_gpu;
+
+typedef struct {
+    mon_thermal_class sensor_class;
+    char source[MON_NAME_MAX + 1U];
+    char label[MON_SENSOR_LABEL_MAX + 1U];
+    int64_t temperature_millidegrees_celsius;
+    bool maximum_available;
+    int64_t maximum_millidegrees_celsius;
+    bool critical_available;
+    int64_t critical_millidegrees_celsius;
+} mon_temperature;
+
+typedef struct {
+    char source[MON_NAME_MAX + 1U];
+    char label[MON_SENSOR_LABEL_MAX + 1U];
+    uint64_t rpm;
+} mon_fan;
+
 typedef struct {
     bool cpu_available;
     uint64_t cpu_total_ticks;
@@ -199,12 +261,26 @@ typedef struct {
     size_t network_interfaces;
     bool network_truncated;
 
+    bool gpu_present;
     bool gpu_available;
     unsigned gpu_card;
     uint64_t gpu_busy_percent_milli;
     bool gpu_memory_available;
     uint64_t gpu_memory_used_bytes;
     uint64_t gpu_memory_total_bytes;
+    mon_gpu gpus[MON_MAX_GPUS];
+    size_t gpu_count;
+    bool gpu_truncated;
+
+    mon_temperature temperatures[MON_MAX_TEMPERATURES];
+    size_t temperature_count;
+    bool temperature_truncated;
+    mon_fan fans[MON_MAX_FANS];
+    size_t fan_count;
+    bool fan_truncated;
+    size_t hwmon_devices_seen;
+    size_t sensor_permission_denied;
+    size_t sensor_malformed;
 
     struct timespec observed_at;
 } mon_host_sample;
@@ -281,12 +357,25 @@ typedef struct {
     mon_interface_rate interfaces[MON_MAX_INTERFACES];
     size_t network_interfaces;
     bool network_truncated;
+    bool gpu_present;
     bool gpu_available;
     unsigned gpu_card;
     uint64_t gpu_busy_percent_milli;
     bool gpu_memory_available;
     uint64_t gpu_memory_used_bytes;
     uint64_t gpu_memory_total_bytes;
+    mon_gpu gpus[MON_MAX_GPUS];
+    size_t gpu_count;
+    bool gpu_truncated;
+    mon_temperature temperatures[MON_MAX_TEMPERATURES];
+    size_t temperature_count;
+    bool temperature_truncated;
+    mon_fan fans[MON_MAX_FANS];
+    size_t fan_count;
+    bool fan_truncated;
+    size_t hwmon_devices_seen;
+    size_t sensor_permission_denied;
+    size_t sensor_malformed;
     mon_process_snapshot processes;
     size_t observed_rows;
     size_t matched_rows;
@@ -483,6 +572,7 @@ const char *mon_group_id(mon_group group);
 const char *mon_theme_id(mon_theme theme);
 const char *mon_layout_id(mon_layout layout);
 const char *mon_class_id(mon_process_class process_class);
+const char *mon_thermal_class_id(mon_thermal_class sensor_class);
 
 int mon_render_report(const mon_report *report, const mon_options *options);
 int mon_render_services(const mon_service_snapshot *snapshot,

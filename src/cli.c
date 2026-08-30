@@ -318,6 +318,19 @@ const char *mon_class_id(mon_process_class process_class) {
     }
 }
 
+const char *mon_thermal_class_id(mon_thermal_class sensor_class) {
+    switch (sensor_class) {
+        case MON_THERMAL_CPU_PACKAGE: return "cpu-package";
+        case MON_THERMAL_CPU_CORE: return "cpu-core";
+        case MON_THERMAL_GPU: return "gpu";
+        case MON_THERMAL_STORAGE: return "storage";
+        case MON_THERMAL_BATTERY: return "battery";
+        case MON_THERMAL_SYSTEM: return "system";
+        case MON_THERMAL_OTHER:
+        default: return "other";
+    }
+}
+
 void mon_usage(FILE *output) {
     (void)fputs(
         "Usage:\n"
@@ -341,6 +354,8 @@ void mon_usage(FILE *output) {
         "  --iterations 1..1000000      watch only; default is continuous on a TTY\n"
         "  --help\n"
         "  --version\n\n"
+        "Performance reports bounded GPU parameters, temperatures and fans with\n"
+        "explicit unavailable values and no integrated-GPU temperature inference.\n"
         "Process inspection reports bounded module basenames, Linux credentials,\n"
         "capability masks, seccomp state and descriptor counts without paths.\n\n"
         "Interactive: 1-6 views, Tab next view, type or / to filter, S sort,\n"

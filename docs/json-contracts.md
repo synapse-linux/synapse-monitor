@@ -17,19 +17,32 @@ Rows contain PID, nullable UID, sanitized name, fixed class, state, threads,
 resident bytes and nullable sampled CPU/I/O rates. They never contain commands,
 environments, paths, open-file targets or mutation handles.
 
-## `synapse.monitor.performance/v1`
+## `synapse.monitor.performance/v2`
 
 The Performance contract contains:
 
 - aggregate CPU and bounded nullable logical-processor milli-percent rows;
 - memory totals;
-- optional GPU/VRAM observations;
+- a bounded multi-GPU inventory with PCI vendor/device identifiers, driver and
+  an optional sanitized local `pci.ids` model label;
+- independently nullable GPU utilization, driver-reported VRAM, hottest
+  dedicated GPU sensor, current/maximum core clock, memory clock, average/input
+  power, power cap and fan RPM;
+- bounded CPU-package, CPU-core, GPU, storage, battery and other system
+  temperature rows with optional maximum/critical thresholds;
+- bounded general fan rows and sensor denial/malformed/truncation coverage;
 - bounded per-physical-disk read/write rates;
 - bounded per-interface receive/transmit rates;
 - optional bounded history arrays, empty for a single snapshot;
 - observed/returned and truncation metadata.
 
-Unavailable numeric values are `null`, never fabricated zeroes.
+Units are fixed: milli-percent, bytes, hertz, microwatts, RPM and
+millidegrees Celsius. Unavailable numeric values are `null`, never fabricated
+zeroes. A driver-reported VRAM window is not claimed to be physically dedicated
+memory. Integrated-GPU temperature is never inferred from CPU-package or thermal
+zone values.
+
+`performance/v1` remains a historical Alpha 2 contract; Alpha 3 emits v2.
 
 ## `synapse.monitor.services/v1`
 

@@ -1,12 +1,12 @@
-# Alpha 2 requirements
+# Alpha 3 requirements
 
 ## Functional views
 
 - `MON-001`: produce deterministic text and exact-major locale-neutral JSON.
 - `MON-002`: provide Processes, Performance, Services, Startup Apps,
   Connections and System Information views.
-- `MON-003`: show CPU, RAM, optional GPU, physical-disk and non-loopback network summaries.
-- `MON-004`: show bounded logical-CPU, per-disk and per-interface performance detail.
+- `MON-003`: show CPU, RAM, bounded GPU inventory, physical-disk and non-loopback network summaries.
+- `MON-004`: show bounded logical-CPU, multi-GPU, temperature, fan, per-disk and per-interface performance detail.
 - `MON-005`: retain at most 60 terminal history samples for live mini-graphs.
 - `MON-006`: correlate process CPU and I/O deltas by PID plus start time.
 - `MON-007`: group process rows by fixed `class|name|none` modes.
@@ -19,6 +19,10 @@
 - `MON-014`: decode bounded TCP/UDP endpoints and correlate socket ownership without opening sockets.
 - `MON-015`: show non-identifying OS, CPU, system, memory, firmware and uptime fields.
 - `MON-016`: provide explicit PID/start-time-safe process inspection with numeric Linux credential metadata, capability masks, seccomp state, module basenames and descriptor counts.
+- `MON-033`: report independently nullable GPU utilization, driver-reported VRAM, temperature, clocks, power/cap and fan RPM where fixed sysfs interfaces expose them.
+- `MON-034`: report bounded CPU-package, CPU-core, GPU, storage, battery and system temperatures with optional maximum/critical thresholds.
+- `MON-035`: report bounded general fan RPM observations.
+- `MON-036`: never infer an integrated-GPU temperature from CPU-package or generic thermal-zone temperature.
 
 ## Safety and privacy
 
@@ -27,7 +31,7 @@
 - `MON-019`: provide no process, service, startup, network, mount, cgroup or privilege mutation.
 - `MON-020`: provide no process dump or descriptor-target interface.
 - `MON-021`: construct no subprocess command, open no network socket/listener and emit no telemetry.
-- `MON-022`: bound files, directories, processes, rows, units, startup entries, connections, modules, descriptors, devices, interfaces, history and timing.
+- `MON-022`: bound files, directories, processes, rows, units, startup entries, connections, modules, descriptors, GPUs, sensor devices/channels, fans, temperatures, interfaces, history and timing.
 - `MON-023`: distinguish unavailable observations from measured zero.
 - `MON-024`: reject unknown, duplicate, malformed and oversized input values.
 - `MON-025`: revalidate PID plus start ticks during explicit process inspection.

@@ -4,13 +4,15 @@ Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
 Its C17 core provides a dense terminal interface and versioned JSON contracts
 without requiring a graphical session.
 
-Alpha 2 includes six complete informational views:
+Alpha 3 includes six informational views and corrects the Alpha 2 GPU/thermal gap:
 
 1. **Processes** — bounded application, system and kernel groups with CPU,
    memory, I/O, state, thread, PID and user observations.
 2. **Performance** — overall and logical-processor CPU activity, RAM,
-   optional GPU/VRAM, per-physical-disk rates, per-interface network rates and
-   a 60-sample terminal history.
+   bounded multi-GPU inventory and optional local PCI model label, driver-exposed utilization/VRAM, temperature,
+   core/memory clocks, power/cap and fan speed, CPU/GPU/storage/battery/system
+   temperatures, general fans, per-physical-disk rates, per-interface network
+   rates and a 60-sample terminal history.
 3. **Services** — name, description, active state, startup state, PID, user and
    a safe executable label.
 4. **Startup Apps** — name, publisher when declared, state, type, semantic
@@ -62,9 +64,14 @@ uses exact-major contracts documented in `docs/json-contracts.md`. Unknown
 views, options, identifiers, duplicate columns and oversized inputs fail closed.
 
 Full paths, raw launch commands, authentication credentials, secrets and serial
-numbers remain private. Safe executable basenames, semantic source scopes and
-numeric kernel credential metadata are deliberately distinguished from those
-private values.
+numbers remain private. Safe executable basenames, semantic source scopes,
+numeric kernel credential metadata and non-identifying sensor labels are
+deliberately distinguished from those private values.
 
-The CLI contract remains provisional during Alpha 2, so translated manual pages
+Every hardware field has explicit availability. In particular, Synapse Monitor
+never substitutes CPU-package temperature for an integrated GPU that has no
+dedicated kernel temperature sensor. Driver-unexposed GPU values remain `null`
+or `unavailable`, not fabricated zeroes.
+
+The CLI contract remains provisional during Alpha 3, so translated manual pages
 remain deferred until the command surface is definitive.

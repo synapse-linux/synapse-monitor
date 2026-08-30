@@ -266,12 +266,31 @@ int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
         report->network_interfaces = output;
     }
 
+    report->gpu_present = host_current.gpu_present;
     report->gpu_available = host_current.gpu_available;
     report->gpu_card = host_current.gpu_card;
     report->gpu_busy_percent_milli = host_current.gpu_busy_percent_milli;
     report->gpu_memory_available = host_current.gpu_memory_available;
     report->gpu_memory_used_bytes = host_current.gpu_memory_used_bytes;
     report->gpu_memory_total_bytes = host_current.gpu_memory_total_bytes;
+    report->gpu_count = host_current.gpu_count;
+    report->gpu_truncated = host_current.gpu_truncated || host_previous.gpu_truncated;
+    if (report->gpu_count > 0U)
+        memcpy(report->gpus, host_current.gpus,
+               report->gpu_count * sizeof(report->gpus[0]));
+    report->temperature_count = host_current.temperature_count;
+    report->temperature_truncated = host_current.temperature_truncated;
+    if (report->temperature_count > 0U)
+        memcpy(report->temperatures, host_current.temperatures,
+               report->temperature_count * sizeof(report->temperatures[0]));
+    report->fan_count = host_current.fan_count;
+    report->fan_truncated = host_current.fan_truncated;
+    if (report->fan_count > 0U)
+        memcpy(report->fans, host_current.fans,
+               report->fan_count * sizeof(report->fans[0]));
+    report->hwmon_devices_seen = host_current.hwmon_devices_seen;
+    report->sensor_permission_denied = host_current.sensor_permission_denied;
+    report->sensor_malformed = host_current.sensor_malformed;
 
     apply_process_rates(&process_current, &process_previous, &host_current,
                         &host_previous, elapsed_ns);
