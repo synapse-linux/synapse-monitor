@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0-alpha.7
+
+- Keep the validated frame and table visible while changing presentation order; header sorting is now an immediate native-model transform with no child restart, loading overlay or stream-sequence flash.
+- Toggle ascending and descending order on repeated header activation, keep unavailable values last in both directions and use stable row identity as the deterministic tie-breaker.
+- Add bounded Excel-style per-column value filters with search, select-all/select-none, apply and clear actions; QML receives opaque native tokens and never constructs filter argv.
+- Apply the existing loaded-row search locally and raise the bounded GUI cohort to the contract maximum of 512 rows.
+- Preserve process inspection identity and validated payload state while rows reorder or filters change.
+- Replace the ambiguous compact locale control with the explicit `Language/Lingua: Italiano/English` selector.
+- Add a dedicated GPU-memory card and distinguish driver-reported graphics memory from integrated shared system memory whose reliable use is unavailable without added privilege.
+- Validate the type and bound of every displayed table field before it can enter the native presentation model.
+- Add native continuous-sort/filter tests and a Qt Quick interaction test for header sorting and the per-column filter popup.
+
 ## 0.5.0-alpha.6
 
 - Make every visible Processes, Services, Startup Apps and Connections column clickable and sortable through exact native per-view allowlists.

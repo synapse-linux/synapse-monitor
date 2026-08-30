@@ -12,6 +12,9 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <algorithm>
+#include <functional>
+
 class MonitorGuiAdapterTest final : public QObject {
     Q_OBJECT
 
@@ -45,7 +48,7 @@ private:
 
     QString fakeBackend(QTemporaryDir *directory, const QByteArray &streamBody) const {
         if (!directory || !directory->isValid()) return {};
-        const QString path = directory->filePath(QStringLiteral("synapse-monitor"));
+        QString path = directory->filePath(QStringLiteral("synapse-monitor"));
         QFile file(path);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
         file.write("#!/usr/bin/env bash\nset -euo pipefail\n"
@@ -251,6 +254,24 @@ private slots:
         QCOMPARE(values.at(1).toInt(), 0);
     }
 
+    void fabricatedGpuMemoryKindFailsClosed() {
+        const MonitorPresentationContract contract = presentation();
+        QJsonObject object = QJsonDocument::fromJson(
+            frame(QStringLiteral("performance"))).object();
+        QJsonObject gpu = object.value(QStringLiteral("gpu")).toObject();
+        gpu.insert(QStringLiteral("memoryKind"), QStringLiteral("dedicated"));
+        object.insert(QStringLiteral("gpu"), gpu);
+        QVariantMap payload;
+        QVariantList rows;
+        QStringList identities;
+        QString error;
+        QVERIFY(!MonitorContracts::decodeFrame(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), contract,
+            QStringLiteral("performance"), 0, 250, 16,
+            &payload, &rows, &identities, &error));
+        QCOMPARE(error, QStringLiteral("stream-invalid"));
+    }
+
     void inspectionRevalidatesPidAndStartTicks() {
         const qint64 pid = QCoreApplication::applicationPid();
         const QByteArray wire = run({QStringLiteral("inspect"), QStringLiteral("--pid"),
@@ -309,27 +330,158 @@ private slots:
         QVERIFY(!adapter.ready());
     }
 
-    void displayedHeaderSortsReachTheCoreContract() {
+    void displayedHeaderSortsAreContinuousAndDirectionToggles() {
         MonitorAdapter adapter(core());
         QSignalSpy accepted(&adapter, &MonitorAdapter::frameAccepted);
+        QSignalSpy stateChanged(&adapter, &MonitorAdapter::stateChanged);
         QVERIFY(adapter.initialize(QStringLiteral("processes")));
         QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
         QCOMPARE(adapter.sortIds().size(), 10);
+        QVERIFY(adapter.ready());
+        QVERIFY(adapter.streaming());
+        QVERIFY(adapter.sourceRowCount() > 1);
         accepted.clear();
+        stateChanged.clear();
+
+        QVERIFY(adapter.setSortId(QStringLiteral("pid")));
+        QCOMPARE(adapter.sortId(), QStringLiteral("pid"));
+        QVERIFY(adapter.sortAscending());
+        QCOMPARE(adapter.visibleRowCount(), adapter.sourceRowCount());
+        QList<qint64> ascending;
+        for (int index = 0; index < adapter.rows()->rowCount(); ++index)
+            ascending.append(adapter.rows()->data(adapter.rows()->index(index, 0),
+                                                   MonitorRowsModel::RowRole).toMap()
+                                 .value(QStringLiteral("pid")).toLongLong());
+        QVERIFY(std::is_sorted(ascending.cbegin(), ascending.cend()));
+
+        QVERIFY(adapter.requestSort(QStringLiteral("pid")));
+        QVERIFY(!adapter.sortAscending());
+        QList<qint64> descending;
+        for (int index = 0; index < adapter.rows()->rowCount(); ++index)
+            descending.append(adapter.rows()->data(adapter.rows()->index(index, 0),
+                                                    MonitorRowsModel::RowRole).toMap()
+                                  .value(QStringLiteral("pid")).toLongLong());
+        QVERIFY(std::is_sorted(descending.cbegin(), descending.cend(),
+                               std::greater<qint64>()));
+        QCOMPARE(accepted.count(), 0);
+        QCOMPARE(stateChanged.count(), 0);
+        QVERIFY(adapter.ready());
+        QVERIFY(adapter.streaming());
+
         QVERIFY(adapter.setSortId(QStringLiteral("class")));
-        QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
         QCOMPARE(adapter.payload().value(QStringLiteral("selection")).toMap()
                      .value(QStringLiteral("sort")).toString(),
-                 QStringLiteral("class"));
-        accepted.clear();
-        QVERIFY(adapter.selectView(QStringLiteral("startup")));
+                 QStringLiteral("cpu"));
+        QCOMPARE(adapter.sortId(), QStringLiteral("class"));
+    }
+
+    void excelStyleColumnFiltersStayTypedAndLocal() {
+        MonitorAdapter adapter(core());
+        QSignalSpy accepted(&adapter, &MonitorAdapter::frameAccepted);
+        QSignalSpy stateChanged(&adapter, &MonitorAdapter::stateChanged);
+        QVERIFY(adapter.initialize(QStringLiteral("processes")));
         QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
+        const int sourceRows = adapter.sourceRowCount();
+        QVERIFY(sourceRows > 1);
+        const QVariantList options = adapter.columnFilterOptions(QStringLiteral("name"));
+        QVERIFY(options.size() > 1);
+        for (const QVariant &option : options) {
+            const QVariantMap value = option.toMap();
+            QCOMPARE(value.value(QStringLiteral("token")).toString().size(), 64);
+            QVERIFY(value.value(QStringLiteral("count")).toInt() > 0);
+        }
         accepted.clear();
-        QVERIFY(adapter.setSortId(QStringLiteral("location")));
+        stateChanged.clear();
+        const QString selected = options.first().toMap()
+                                     .value(QStringLiteral("token")).toString();
+        QVERIFY(adapter.setColumnFilter(QStringLiteral("name"), {selected}, true));
+        QCOMPARE(adapter.filteredColumnIds(), QStringList({QStringLiteral("name")}));
+        QVERIFY(adapter.visibleRowCount() > 0);
+        QVERIFY(adapter.visibleRowCount() < sourceRows);
+        QCOMPARE(adapter.sourceRowCount(), sourceRows);
+        QCOMPARE(accepted.count(), 0);
+        QCOMPARE(stateChanged.count(), 0);
+        QVERIFY(adapter.ready());
+        QVERIFY(adapter.streaming());
+
+        QVERIFY(adapter.setColumnFilter(QStringLiteral("name"), {}, true));
+        QVERIFY(adapter.columnFilterActive(QStringLiteral("name")));
+        QCOMPARE(adapter.visibleRowCount(), 0);
+        QVERIFY(adapter.clearColumnFilter(QStringLiteral("name")));
+        QCOMPARE(adapter.visibleRowCount(), sourceRows);
+        QVERIFY(adapter.filteredColumnIds().isEmpty());
+        QVERIFY(!adapter.setColumnFilter(QStringLiteral("name"),
+                                         {QString(64, QLatin1Char('0'))}, true));
+        QCOMPARE(adapter.errorId(), QStringLiteral("column-filter-invalid"));
+    }
+
+    void unavailableValuesRemainLastInBothDirections() {
+        QJsonObject object = QJsonDocument::fromJson(
+            frame(QStringLiteral("connections"))).object();
+        QVERIFY(!object.isEmpty());
+        QJsonObject stream = object.value(QStringLiteral("stream")).toObject();
+        stream.insert(QStringLiteral("intervalMilliseconds"), 1000);
+        stream.insert(QStringLiteral("sequence"), 0);
+        object.insert(QStringLiteral("stream"), stream);
+        const auto connection = [](qint64 inode, const QJsonValue &pid,
+                                   const QString &process) {
+            QJsonObject row;
+            row.insert(QStringLiteral("protocol"), QStringLiteral("tcp"));
+            row.insert(QStringLiteral("local"), QStringLiteral("127.0.0.1:1"));
+            row.insert(QStringLiteral("remote"), QStringLiteral("0.0.0.0:0"));
+            row.insert(QStringLiteral("state"), QStringLiteral("listen"));
+            row.insert(QStringLiteral("socketInode"), inode);
+            row.insert(QStringLiteral("pid"), pid);
+            row.insert(QStringLiteral("process"), process);
+            return row;
+        };
+        object.insert(QStringLiteral("rows"),
+                      QJsonArray({connection(101, QJsonValue(QJsonValue::Null),
+                                             QStringLiteral("unavailable")),
+                                  connection(102, 2, QStringLiteral("two")),
+                                  connection(103, 1, QStringLiteral("one"))}));
+        const QByteArray wire = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        QVERIFY(!wire.contains('\''));
+        QTemporaryDir directory;
+        const QString backend = fakeBackend(
+            &directory, QByteArrayLiteral("  printf '%s\\n' '") + wire
+                            + QByteArrayLiteral("'\n  sleep 5"));
+        QVERIFY(!backend.isEmpty());
+        MonitorAdapter adapter(backend);
+        QSignalSpy accepted(&adapter, &MonitorAdapter::frameAccepted);
+        QVERIFY(adapter.initialize(QStringLiteral("connections")));
         QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
-        QCOMPARE(adapter.payload().value(QStringLiteral("selection")).toMap()
-                     .value(QStringLiteral("sort")).toString(),
-                 QStringLiteral("location"));
+        QCOMPARE(adapter.sourceRowCount(), 3);
+
+        QVERIFY(adapter.setSortId(QStringLiteral("pid")));
+        const auto pidAt = [&adapter](int index) {
+            return adapter.rows()->data(adapter.rows()->index(index, 0),
+                                        MonitorRowsModel::RowRole).toMap()
+                .value(QStringLiteral("pid"));
+        };
+        QCOMPARE(pidAt(0).toLongLong(), qint64(1));
+        QCOMPARE(pidAt(1).toLongLong(), qint64(2));
+        QVERIFY(pidAt(2).isNull());
+        QVERIFY(adapter.requestSort(QStringLiteral("pid")));
+        QCOMPARE(pidAt(0).toLongLong(), qint64(2));
+        QCOMPARE(pidAt(1).toLongLong(), qint64(1));
+        QVERIFY(pidAt(2).isNull());
+
+        const QVariantList options = adapter.columnFilterOptions(QStringLiteral("pid"));
+        QCOMPARE(options.size(), 3);
+        QString unavailableToken;
+        for (const QVariant &entry : options) {
+            const QVariantMap option = entry.toMap();
+            if (option.value(QStringLiteral("unavailable")).toBool())
+                unavailableToken = option.value(QStringLiteral("token")).toString();
+        }
+        QCOMPARE(unavailableToken.size(), 64);
+        QVERIFY(adapter.setColumnFilter(QStringLiteral("pid"),
+                                        {unavailableToken}, true));
+        QCOMPARE(adapter.visibleRowCount(), 1);
+        QVERIFY(pidAt(0).isNull());
+        QVERIFY(adapter.ready());
+        QVERIFY(adapter.streaming());
     }
 
     void liveAdapterOwnsAndStopsItsChild() {
@@ -352,6 +504,10 @@ private slots:
         QCOMPARE(adapter.inspection().value(QStringLiteral("identity")).toMap()
                      .value(QStringLiteral("pid")).toLongLong(),
                  first.value(QStringLiteral("pid")).toLongLong());
+        const QVariantMap inspectionBeforeSort = adapter.inspection();
+        QVERIFY(adapter.setSortId(QStringLiteral("pid")));
+        QVERIFY(adapter.requestSort(QStringLiteral("pid")));
+        QCOMPARE(adapter.inspection(), inspectionBeforeSort);
         adapter.closeInspection();
         QVERIFY(!adapter.setFilter(QString::fromUtf8("caffè")));
         QCOMPARE(adapter.errorId(), QStringLiteral("filter-invalid"));

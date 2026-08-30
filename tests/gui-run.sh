@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.6' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.7' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -17,6 +17,10 @@ refused_status=$?
 set -e
 [[ $refused_status == 2 ]]
 SYNAPSE_MONITOR_TEST_CORE="$core" "$adapter_test"
+qmltestrunner=${QMLTESTRUNNER6:-$(qmake6 -query QT_HOST_BINS)/qmltestrunner}
+[[ -x $qmltestrunner ]]
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software \
+  "$qmltestrunner" -input "$repo/tests" -import "$repo/gui/qml" -o -,txt
 
 for view in processes performance services startup connections information; do
   size=1280x800
@@ -65,13 +69,18 @@ assert 'signal sortRequested(string sortId)' in header
 assert 'onClicked: root.requestSort(headerCell.modelData)' in header
 assert 'Keys.onReturnPressed: root.requestSort(headerCell.modelData)' in header
 assert 'root.activeSortId === headerCell.sortId' in header
+assert 'columnFilterOptions' in header and 'setColumnFilter' in header
+assert 'synapse.monitor.filter.select-all' in header
 for path in sys.argv[2:]:
  text=pathlib.Path(path).read_text()
  definitions=[line for line in text.splitlines() if '{ key:' in line]
  assert definitions and all('sortId:' in line for line in definitions), path
  assert 'sortableIds: root.adapter.sortIds' in text
  assert 'activeSortId: root.adapter.sortId' in text
- assert 'onSortRequested:' in text
+ assert 'sortAscending: root.adapter.sortAscending' in text
+ assert 'activeFilterIds: root.adapter.filteredColumnIds' in text
+ assert 'filterController: root.adapter' in text
+ assert 'root.adapter.requestSort(sortId)' in text
 assert 'key: "uid", sortId: "user"' in pathlib.Path(sys.argv[2]).read_text()
 assert 'key: "state", sortId: "status"' in pathlib.Path(sys.argv[3]).read_text()
 assert 'key: "location", sortId: "location"' in pathlib.Path(sys.argv[3]).read_text()

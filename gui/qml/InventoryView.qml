@@ -98,7 +98,7 @@ Item {
                 id: filterField
                 Layout.fillWidth: true
                 Layout.maximumWidth: 420
-                placeholderText: qsTrId("synapse.monitor.action.filter")
+                placeholderText: qsTrId("synapse.monitor.action.search-loaded")
                 color: root.textColor
                 placeholderTextColor: root.mutedColor
                 selectByMouse: true
@@ -107,33 +107,37 @@ Item {
                 onTextEdited: filterTimer.restart()
                 background: Rectangle { radius: 9; color: root.surfaceColor; border.color: root.borderColor }
             }
-            Label { text: qsTrId("synapse.monitor.action.sort"); color: root.mutedColor; font.pixelSize: 11 }
-            SynapseComboBox {
-                id: sortBox
-                model: root.adapter.sortIds
-                currentIndex: Math.max(0, root.adapter.sortIds.indexOf(root.adapter.sortId))
-                textForValue: function(value) { return root.identifierLabel(value) }
-                onActivated: root.adapter.setSortId(String(model[currentIndex]))
-                implicitWidth: 170
-                surfaceColor: root.surfaceColor; hoverColor: root.hoverColor
-                borderColor: root.borderColor; textColor: root.textColor
-                mutedColor: root.mutedColor; accentColor: root.accentColor
+            Label {
+                text: qsTrId("synapse.monitor.filter.header-hint")
+                color: root.mutedColor
+                font.pixelSize: 10
+                visible: root.width >= 900
             }
             Item { Layout.fillWidth: true }
-            Label { text: root.adapter.sequence >= 0 ? "#" + root.adapter.sequence : "—"; color: root.mutedColor; font.pixelSize: 11 }
+            Label {
+                text: root.adapter.visibleRowCount + " / "
+                      + root.adapter.sourceRowCount + " "
+                      + qsTrId("synapse.monitor.filter.loaded-rows")
+                color: root.mutedColor
+                font.pixelSize: 11
+                visible: root.width >= 900
+            }
         }
 
         DataTable {
             Layout.fillWidth: true
             Layout.fillHeight: true
             tableModel: root.adapter.rows
+            filterController: root.adapter
             columnDefinitions: root.columns()
             sortableIds: root.adapter.sortIds
+            activeFilterIds: root.adapter.filteredColumnIds
             activeSortId: root.adapter.sortId
+            sortAscending: root.adapter.sortAscending
             surfaceColor: root.surfaceColor; alternateColor: root.alternateColor
             hoverColor: root.hoverColor; borderColor: root.borderColor
             textColor: root.textColor; mutedColor: root.mutedColor; accentColor: root.accentColor
-            onSortRequested: function(sortId) { root.adapter.setSortId(sortId) }
+            onSortRequested: function(sortId) { root.adapter.requestSort(sortId) }
         }
 
         Label {

@@ -2,13 +2,17 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 Rectangle {
     id: root
     property var tableModel
+    property var filterController: null
     property var columnDefinitions: []
     property var sortableIds: []
+    property var activeFilterIds: []
     property string activeSortId: ""
+    property bool sortAscending: true
     property color surfaceColor: "#24283b"
     property color alternateColor: "#202435"
     property color hoverColor: "#292e42"
@@ -26,6 +30,10 @@ Rectangle {
 
     function isSortable(definition) {
         return sortableIds.indexOf(columnSortId(definition)) >= 0
+    }
+
+    function isFiltered(definition) {
+        return activeFilterIds.indexOf(String(definition.key || "")) >= 0
     }
 
     function requestSort(definition) {
@@ -86,7 +94,7 @@ Rectangle {
 
             Rectangle {
                 width: parent.width
-                height: 38
+                height: 40
                 color: Qt.darker(root.surfaceColor, 1.08)
                 border.color: root.borderColor
                 border.width: 0
@@ -97,11 +105,14 @@ Rectangle {
                         model: root.columnDefinitions
                         delegate: Item {
                             id: headerCell
+                            objectName: "column-header-" + String(modelData.key || "")
                             required property var modelData
                             property string sortId: root.columnSortId(headerCell.modelData)
                             property bool sortable: root.isSortable(headerCell.modelData)
                             property bool selected: headerCell.sortable
                                                     && root.activeSortId === headerCell.sortId
+                            property bool filtered: root.isFiltered(headerCell.modelData)
+                            property bool filterable: root.filterController !== null
                             width: Number(headerCell.modelData.width || 120)
                             height: parent.height
                             activeFocusOnTab: headerCell.sortable
@@ -119,14 +130,14 @@ Rectangle {
                                 color: headerCell.selected
                                        ? Qt.rgba(root.accentColor.r, root.accentColor.g,
                                                  root.accentColor.b, 0.12)
-                                       : (headerMouse.containsMouse
+                                       : (headerSortMouse.containsMouse
                                           ? root.hoverColor : "transparent")
                             }
                             Label {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 12
                                 anchors.right: sortIndicator.left
-                                anchors.rightMargin: 6
+                                anchors.rightMargin: 5
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: headerCell.modelData.label || headerCell.modelData.key
                                 color: headerCell.selected ? root.accentColor : root.mutedColor
@@ -138,30 +149,255 @@ Rectangle {
                             }
                             Label {
                                 id: sortIndicator
-                                anchors.right: parent.right
-                                anchors.rightMargin: 8
+                                anchors.right: filterButton.left
+                                anchors.rightMargin: 2
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: headerCell.sortable
                                 text: headerCell.selected
-                                      ? (headerCell.modelData.descending ? "↓" : "↑") : "↕"
+                                      ? (root.sortAscending ? "↑" : "↓") : "↕"
                                 color: headerCell.selected ? root.accentColor : root.mutedColor
                                 font.pixelSize: 11
                                 font.weight: Font.DemiBold
+                            }
+                            Item {
+                                id: filterButton
+                                objectName: "column-filter-" + String(headerCell.modelData.key || "")
+                                property var controlledPopup: filterPopup
+                                anchors.right: parent.right
+                                anchors.rightMargin: 3
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: headerCell.filterable ? 26 : 0
+                                height: 30
+                                visible: headerCell.filterable
+                                activeFocusOnTab: true
+                                Accessible.role: Accessible.Button
+                                Accessible.name: qsTrId("synapse.monitor.filter.column") + " "
+                                                 + String(headerCell.modelData.label
+                                                          || headerCell.modelData.key)
+                                Keys.onReturnPressed: filterPopup.openForColumn()
+                                Keys.onSpacePressed: filterPopup.openForColumn()
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 7
+                                    color: headerCell.filtered
+                                           ? Qt.rgba(root.accentColor.r, root.accentColor.g,
+                                                     root.accentColor.b, 0.2)
+                                           : (filterMouse.containsMouse
+                                              ? root.hoverColor : "transparent")
+                                    border.color: headerCell.filtered
+                                                  ? root.accentColor : "transparent"
+                                }
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: headerCell.filtered ? "●" : "⌄"
+                                    color: headerCell.filtered ? root.accentColor : root.mutedColor
+                                    font.pixelSize: headerCell.filtered ? 8 : 13
+                                }
+                                MouseArea {
+                                    id: filterMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: filterPopup.openForColumn()
+                                }
                             }
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
-                                height: headerCell.selected ? 2 : 1
-                                color: headerCell.selected ? root.accentColor : root.borderColor
+                                height: headerCell.selected || headerCell.filtered ? 2 : 1
+                                color: headerCell.selected || headerCell.filtered
+                                       ? root.accentColor : root.borderColor
                             }
                             MouseArea {
-                                id: headerMouse
-                                anchors.fill: parent
+                                id: headerSortMouse
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.right: filterButton.left
                                 enabled: headerCell.sortable
                                 hoverEnabled: headerCell.sortable
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.requestSort(headerCell.modelData)
+                            }
+
+                            Popup {
+                                id: filterPopup
+                                objectName: "column-filter-popup-" + String(headerCell.modelData.key || "")
+                                width: 300
+                                height: 370
+                                y: headerCell.height + 3
+                                margins: 12
+                                padding: 12
+                                modal: false
+                                focus: true
+                                closePolicy: Popup.CloseOnEscape
+                                             | Popup.CloseOnPressOutside
+                                property var options: []
+                                property var selectedTokens: []
+                                property string searchText: ""
+
+                                function openForColumn() {
+                                    if (!root.filterController) return
+                                    options = root.filterController.columnFilterOptions(
+                                                  String(headerCell.modelData.key))
+                                    const alreadyFiltered = root.filterController.columnFilterActive(
+                                                                String(headerCell.modelData.key))
+                                    selectedTokens = alreadyFiltered
+                                        ? root.filterController.activeColumnFilterTokens(
+                                              String(headerCell.modelData.key))
+                                        : options.map(function(option) { return String(option.token) })
+                                    searchText = ""
+                                    optionSearch.text = ""
+                                    open()
+                                }
+
+                                function filteredOptions() {
+                                    const needle = searchText.toLocaleLowerCase()
+                                    if (!needle.length) return options
+                                    return options.filter(function(option) {
+                                        const displayed = root.present(
+                                            option.value,
+                                            String(headerCell.modelData.format || "text"))
+                                        return displayed.toLocaleLowerCase().indexOf(needle) >= 0
+                                    })
+                                }
+
+                                function setSelected(token, checked) {
+                                    const copy = selectedTokens.slice()
+                                    const index = copy.indexOf(token)
+                                    if (checked && index < 0) copy.push(token)
+                                    else if (!checked && index >= 0) copy.splice(index, 1)
+                                    selectedTokens = copy
+                                }
+
+                                background: Rectangle {
+                                    radius: 12
+                                    color: root.surfaceColor
+                                    border.color: root.borderColor
+                                }
+
+                                contentItem: ColumnLayout {
+                                    spacing: 8
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: qsTrId("synapse.monitor.filter.title") + " · "
+                                              + String(headerCell.modelData.label
+                                                       || headerCell.modelData.key)
+                                        color: root.textColor
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    TextField {
+                                        id: optionSearch
+                                        objectName: "column-filter-search-" + String(headerCell.modelData.key || "")
+                                        Layout.fillWidth: true
+                                        placeholderText: qsTrId("synapse.monitor.filter.search")
+                                        maximumLength: 64
+                                        color: root.textColor
+                                        placeholderTextColor: root.mutedColor
+                                        selectByMouse: true
+                                        onTextEdited: filterPopup.searchText = text
+                                        background: Rectangle {
+                                            radius: 8
+                                            color: root.alternateColor
+                                            border.color: optionSearch.activeFocus
+                                                          ? root.accentColor : root.borderColor
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        Button {
+                                            text: qsTrId("synapse.monitor.filter.select-all")
+                                            flat: true
+                                            onClicked: filterPopup.selectedTokens
+                                                       = filterPopup.options.map(
+                                                           function(option) {
+                                                               return String(option.token)
+                                                           })
+                                        }
+                                        Button {
+                                            text: qsTrId("synapse.monitor.filter.select-none")
+                                            flat: true
+                                            onClicked: filterPopup.selectedTokens = []
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Label {
+                                            text: filterPopup.selectedTokens.length + " / "
+                                                  + filterPopup.options.length
+                                            color: root.mutedColor
+                                            font.pixelSize: 10
+                                        }
+                                    }
+                                    ListView {
+                                        id: optionList
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+                                        spacing: 2
+                                        model: filterPopup.filteredOptions()
+                                        ScrollIndicator.vertical: ScrollIndicator { }
+                                        delegate: CheckDelegate {
+                                            id: optionDelegate
+                                            required property var modelData
+                                            width: optionList.width
+                                            height: 34
+                                            checked: filterPopup.selectedTokens.indexOf(
+                                                         String(optionDelegate.modelData.token)) >= 0
+                                            onToggled: filterPopup.setSelected(
+                                                           String(optionDelegate.modelData.token),
+                                                           checked)
+                                            contentItem: RowLayout {
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: root.present(
+                                                        optionDelegate.modelData.value,
+                                                        String(headerCell.modelData.format || "text"))
+                                                    color: root.textColor
+                                                    elide: Text.ElideRight
+                                                    font.pixelSize: 11
+                                                }
+                                                Label {
+                                                    text: String(optionDelegate.modelData.count)
+                                                    color: root.mutedColor
+                                                    font.pixelSize: 10
+                                                }
+                                            }
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: optionDelegate.hovered
+                                                       ? root.hoverColor : "transparent"
+                                            }
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 7
+                                        Button {
+                                            objectName: "column-filter-clear-" + String(headerCell.modelData.key || "")
+                                            text: qsTrId("synapse.monitor.filter.clear")
+                                            onClicked: {
+                                                if (root.filterController.clearColumnFilter(
+                                                        String(headerCell.modelData.key)))
+                                                    filterPopup.close()
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Button {
+                                            objectName: "column-filter-apply-" + String(headerCell.modelData.key || "")
+                                            text: qsTrId("synapse.monitor.filter.apply")
+                                            highlighted: true
+                                            onClicked: {
+                                                if (root.filterController.setColumnFilter(
+                                                        String(headerCell.modelData.key),
+                                                        filterPopup.selectedTokens, true))
+                                                    filterPopup.close()
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

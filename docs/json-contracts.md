@@ -26,7 +26,8 @@ and terminate the stream. The metadata schema is
 
 The Processes contract contains:
 
-- sampled CPU/RAM/GPU/disk/network summary;
+- sampled CPU/RAM/GPU/disk/network summary, including GPU `memoryKind` as
+  `shared|driver-reported-vram|unavailable`;
 - fixed process selection, grouping, sorting, filter and columns;
 - scan denials, races, malformed rows and truncation coverage;
 - bounded PID/start-time-correlated process rows.
@@ -58,8 +59,9 @@ The Performance contract contains:
 
 Units are fixed: milli-percent, bytes, hertz, microwatts, RPM and
 millidegrees Celsius. Unavailable numeric values are `null`, never fabricated
-zeroes. A driver-reported VRAM window is not claimed to be physically dedicated
-memory. Integrated-GPU temperature is never inferred from CPU-package or thermal
+zeroes. `memoryKind=shared` describes integrated system-memory use without
+claiming a separately measurable pool. A driver-reported VRAM window is not
+claimed to be physically dedicated memory. Integrated-GPU temperature is never inferred from CPU-package or thermal
 zone values.
 
 `performance/v1` remains a historical Alpha 2 contract; Alpha 3 and later emit v2.

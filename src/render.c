@@ -297,6 +297,8 @@ static void render_available_u64(const char *name, bool available, uint64_t valu
     else fputs("null", stdout);
 }
 
+static const char *gpu_memory_kind(const mon_gpu *gpu);
+
 static int render_json(const mon_report *report, const mon_options *options) {
     size_t returned = rows_returned(report, options);
     fputs("{\"schema\":\"synapse.monitor.snapshot/v1\",\"readOnly\":true,\"view\":\"processes\"", stdout);
@@ -336,6 +338,9 @@ static int render_json(const mon_report *report, const mon_options *options) {
     render_available_u64("busyPercentMilli", report->gpu_available,
                          report->gpu_busy_percent_milli, true);
     printf(",\"memoryAvailable\":%s", report->gpu_memory_available ? "true" : "false");
+    fputs(",\"memoryKind\":", stdout);
+    if (report->gpu_count > 0U) json_string(gpu_memory_kind(&report->gpus[0]));
+    else fputs("null", stdout);
     render_available_u64("memoryUsedBytes", report->gpu_memory_available,
                          report->gpu_memory_used_bytes, true);
     render_available_u64("memoryTotalBytes", report->gpu_memory_available,
@@ -800,6 +805,9 @@ static int render_performance_json(const mon_report *report,
                          report->gpu_busy_percent_milli, true);
     printf(",\"memoryAvailable\":%s",
            report->gpu_memory_available ? "true" : "false");
+    fputs(",\"memoryKind\":", stdout);
+    if (report->gpu_count > 0U) json_string(gpu_memory_kind(&report->gpus[0]));
+    else fputs("null", stdout);
     render_available_u64("memoryUsedBytes", report->gpu_memory_available,
                          report->gpu_memory_used_bytes, true);
     render_available_u64("memoryTotalBytes", report->gpu_memory_available,

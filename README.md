@@ -4,7 +4,7 @@ Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
 Its C17 core provides a dense terminal interface and versioned JSON contracts
 without requiring a graphical session.
 
-Alpha 6 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts: every visible table column now sorts from its header through an exact native allowlist, and guarded previews retain the host connection tables while denying IPv4/IPv6 socket authority. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
+Alpha 7 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. Every visible table column now sorts immediately in the validated native model, toggles direction without restarting the stream, and provides a bounded Excel-style value filter. The language selector is explicit and GPU memory is always represented with driver-reported, shared or unavailable semantics. Guarded previews retain host connection tables while denying IPv4/IPv6 socket authority. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
 
 1. **Processes** — bounded application, system and kernel groups with CPU,
    memory, I/O, state, thread, PID and user observations.
@@ -78,6 +78,9 @@ layout, typography, color, charts and accessibility. The native adapter discover
 the sibling or installed C17 core without a shell; owns fixed argv and child
 lifetime; enforces the 2 MiB line cap, exact schema majors, contiguous sequence,
 stable identities and bounded stderr; and discards stale process inspection.
+It also owns deterministic local ordering, direction and finite per-column filter
+tokens over at most 512 validated rows. These presentation changes never restart
+the child or clear the currently validated frame.
 The normal GUI has no executable-path option. An absolute backend override is
 accepted only with explicit test authority for isolated qualification.
 
@@ -93,8 +96,11 @@ deliberately distinguished from those private values.
 
 Every hardware field has explicit availability. In particular, Synapse Monitor
 never substitutes CPU-package temperature for an integrated GPU that has no
-dedicated kernel temperature sensor. Driver-unexposed GPU values remain `null`
-or `unavailable`, not fabricated zeroes.
+dedicated kernel temperature sensor. GPU memory is shown explicitly: a dedicated
+driver counter remains driver-reported graphics memory, while an integrated i915
+GPU is labelled shared system memory and its use remains unavailable when no
+unprivileged reliable counter exists. Driver-unexposed values remain `null` or
+`unavailable`, not fabricated zeroes.
 
 The CLI contract remains provisional during Alpha 4, so translated manual pages
 remain deferred until the command surface is definitive.

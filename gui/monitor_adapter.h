@@ -5,6 +5,7 @@
 #include <QAbstractListModel>
 #include <QHash>
 #include <QProcess>
+#include <QSet>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -72,13 +73,18 @@ class MonitorAdapter final : public QObject {
     Q_PROPERTY(QAbstractItemModel *rows READ rows CONSTANT)
     Q_PROPERTY(qint64 sequence READ sequence NOTIFY frameChanged)
     Q_PROPERTY(QString errorId READ errorId NOTIFY stateChanged)
-    Q_PROPERTY(QString filter READ filter NOTIFY selectionChanged)
-    Q_PROPERTY(QString sortId READ sortId NOTIFY selectionChanged)
+    Q_PROPERTY(QString filter READ filter NOTIFY rowPresentationChanged)
+    Q_PROPERTY(QString sortId READ sortId NOTIFY rowPresentationChanged)
+    Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY rowPresentationChanged)
     Q_PROPERTY(QString groupId READ groupId NOTIFY selectionChanged)
     Q_PROPERTY(QStringList sortIds READ sortIds NOTIFY selectionChanged)
     Q_PROPERTY(QStringList groupIds READ groupIds NOTIFY selectionChanged)
     Q_PROPERTY(bool filterSupported READ filterSupported NOTIFY selectionChanged)
     Q_PROPERTY(int intervalMilliseconds READ intervalMilliseconds NOTIFY selectionChanged)
+    Q_PROPERTY(QStringList filteredColumnIds READ filteredColumnIds
+               NOTIFY rowPresentationChanged)
+    Q_PROPERTY(int visibleRowCount READ visibleRowCount NOTIFY rowPresentationChanged)
+    Q_PROPERTY(int sourceRowCount READ sourceRowCount NOTIFY rowPresentationChanged)
     Q_PROPERTY(QVariantMap inspection READ inspection NOTIFY inspectionChanged)
     Q_PROPERTY(bool inspectionBusy READ inspectionBusy NOTIFY inspectionChanged)
     Q_PROPERTY(QString inspectionErrorId READ inspectionErrorId NOTIFY inspectionChanged)
@@ -98,11 +104,15 @@ public:
     QString errorId() const;
     QString filter() const;
     QString sortId() const;
+    bool sortAscending() const;
     QString groupId() const;
     QStringList sortIds() const;
     QStringList groupIds() const;
     bool filterSupported() const;
     int intervalMilliseconds() const;
+    QStringList filteredColumnIds() const;
+    int visibleRowCount() const;
+    int sourceRowCount() const;
     QVariantMap inspection() const;
     bool inspectionBusy() const;
     QString inspectionErrorId() const;
@@ -110,8 +120,16 @@ public:
     Q_INVOKABLE bool selectView(const QString &viewId);
     Q_INVOKABLE bool setFilter(const QString &filter);
     Q_INVOKABLE bool setSortId(const QString &sortId);
+    Q_INVOKABLE bool requestSort(const QString &sortId);
     Q_INVOKABLE bool setGroupId(const QString &groupId);
     Q_INVOKABLE bool setIntervalMilliseconds(int milliseconds);
+    Q_INVOKABLE QVariantList columnFilterOptions(const QString &columnId) const;
+    Q_INVOKABLE QStringList activeColumnFilterTokens(const QString &columnId) const;
+    Q_INVOKABLE bool columnFilterActive(const QString &columnId) const;
+    Q_INVOKABLE bool setColumnFilter(const QString &columnId,
+                                     const QStringList &tokens, bool enabled);
+    Q_INVOKABLE bool clearColumnFilter(const QString &columnId);
+    Q_INVOKABLE void clearAllColumnFilters();
     Q_INVOKABLE bool inspectProcess(qint64 pid, qint64 startTicks);
     Q_INVOKABLE void closeInspection();
 
@@ -121,17 +139,22 @@ signals:
     void selectionChanged();
     void frameChanged();
     void frameAccepted();
+    void rowPresentationChanged();
     void inspectionChanged();
 
 private:
     bool loadPresentation();
-    bool startStream();
+    bool startStream(bool preserveFrame = false);
     void stopStream();
     void consumeStreamOutput();
     void consumeStreamError();
     void failStream(const QString &errorId);
     void finishInspection(int exitCode, QProcess::ExitStatus status);
     void failInspection(const QString &errorId);
+    void rebuildPresentedRows();
+    bool validDisplayColumn(const QString &columnId) const;
+    QString sortField(const QString &sortId) const;
+    bool defaultSortAscending(const QString &sortId) const;
     MonitorViewCapability currentCapability() const;
     QString defaultSort(const QString &viewId) const;
     QString defaultGroup(const QString &viewId) const;
@@ -140,6 +163,7 @@ private:
     static constexpr qsizetype kMaximumErrorBytes = qsizetype{32} * 1024;
     static constexpr qsizetype kMaximumDescribeBytes = qsizetype{256} * 1024;
     static constexpr qsizetype kMaximumInspectionBytes = qsizetype{256} * 1024;
+    static constexpr qsizetype kMaximumFilterOptions = 512;
 
     QString backendPath_;
     MonitorPresentationContract presentation_;
@@ -152,6 +176,10 @@ private:
     QByteArray inspectionOutput_;
     QByteArray inspectionError_;
     QVariantMap payload_;
+    QVariantList acceptedRows_;
+    QStringList acceptedIdentities_;
+    QHash<QString, QSet<QString>> columnFilters_;
+    mutable QHash<QString, QSet<QString>> issuedFilterTokens_;
     QVariantMap inspection_;
     QString currentView_;
     QString filter_;
@@ -160,11 +188,13 @@ private:
     QString errorId_;
     QString inspectionErrorId_;
     qint64 sequence_ = -1;
+    qint64 streamSequence_ = -1;
     qint64 inspectionPid_ = 0;
     qint64 inspectionStartTicks_ = 0;
     int intervalMilliseconds_ = 1000;
     int sampleMilliseconds_ = 250;
-    int rowLimit_ = 128;
+    int rowLimit_ = 512;
+    bool sortAscending_ = true;
     bool ready_ = false;
     bool streaming_ = false;
     bool stopping_ = false;

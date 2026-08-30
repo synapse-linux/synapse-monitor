@@ -1,10 +1,10 @@
 # Graphical presentation contracts
 
-The Alpha 6 graphical shell is a separate, presentation-only consumer. The C17
-core owns observation, filtering, ordering, bounds, privacy and exact-major wire
-contracts. The native Qt adapter owns transport validation and typed models. QML
-owns layout, generic typography, color, charts, animation, translated labels and
-accessibility.
+The Alpha 7 graphical shell is a separate, presentation-only consumer. The C17
+core owns observation, bounded source selection, privacy and exact-major wire
+contracts. The native Qt adapter owns transport validation, typed models and
+bounded local row presentation. QML owns layout, generic typography, color,
+charts, animation, translated labels and accessibility.
 
 ## Capability discovery
 
@@ -39,7 +39,7 @@ resource rows use their documented typed keys.
 
 ```text
 synapse-monitor stream --view VIEW --format ndjson \
-  --sample-ms 250 --interval-ms 750 --limit 128
+  --sample-ms 250 --interval-ms 750 --limit 512
 ```
 
 `stream` emits `application/x-ndjson`. Each non-empty line is one complete view
@@ -76,12 +76,16 @@ The native GUI adapter, not QML, owns executable discovery, process lifetime and
 fixed argv. Normal discovery uses only the sibling or installed core. An absolute
 backend override is rejected unless explicit test authority is present and is
 never exposed to QML. QML may request typed view IDs, reviewed sort/group/column
-IDs, bounded filter text and presentation preferences through native methods.
+IDs, bounded search text and presentation preferences through native methods.
 Every visible table header maps to one declared sort ID and exposes the active
-natural ordering indicator. The adapter rejects any identifier outside the exact
-per-view allowlist before replacing the child stream. QML must not concatenate a
-command, construct argv, choose an executable or path, invoke
-a shell, or receive stderr as display data.
+ascending/descending indicator. Sorting, loaded-row search and finite per-column
+value filters are applied synchronously to at most 512 already validated rows;
+they do not replace the child, clear the frame or reset stream sequence. Filter
+values cross the QML boundary only as opaque 64-hex native tokens generated from
+values already visible in the typed model. The adapter rejects unknown columns,
+sort IDs, duplicate tokens and tokens not present in the current bounded cohort.
+QML must not concatenate a command, construct argv, choose an executable or path,
+invoke a shell, or receive stderr as display data.
 
 The adapter must:
 
@@ -93,13 +97,24 @@ The adapter must:
 6. preserve `null` as unavailable rather than converting it to zero;
 7. reconcile rows using documented stable identity fields;
 8. compare an inspection response's start ticks with the selected process row and discard it on mismatch;
-9. stop and surface a bounded generic error if framing or schema validation fails;
-10. terminate its child stream on GUI shutdown or view replacement.
+9. validate every displayed row field's type and bound before publishing it;
+10. keep unavailable sort values last in both directions and use stable identity as a deterministic tie-breaker;
+11. retain inspection identity while rows reorder and filter;
+12. stop and surface a bounded generic error if framing or schema validation fails;
+13. terminate its child stream on GUI shutdown or view replacement.
 
-Alpha 6 implements these checks before publishing any frame to QML. It also
-bounds stderr to 32 KiB and capability/inspection documents to 256 KiB. Zero
+Alpha 7 implements these checks before publishing any frame to QML. It also
+bounds stderr to 32 KiB, capability/inspection documents to 256 KiB, row cohorts
+and filter options to 512, and filter tokens to SHA-256-sized identifiers. Zero
 socket inodes are reported as unavailable identity coverage and never enter the
 connection row model.
+
+GPU memory is never omitted from the top-level presentation. A numeric value is
+shown only when the driver exposes both used and total counters, and is labelled
+as driver-reported graphics memory. Integrated GPUs whose `memoryKind` is
+`shared` show shared system memory with unavailable usage when no reliable
+unprivileged counter exists. The GUI does not relabel total RAM, Shmem or a
+privileged i915 GEM aggregate as dedicated VRAM.
 
 No process, service, startup, connection, GPU, thermal, fan, power or clock
 mutation is authorized by these contracts. The graphical implementation adds no

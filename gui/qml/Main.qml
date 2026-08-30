@@ -147,7 +147,12 @@ ApplicationWindow {
                 ColumnLayout {
                     spacing: 0
                     Label { text: qsTrId("synapse.monitor.title"); color: window.textPrimary; font.pixelSize: 17; font.weight: Font.DemiBold }
-                    Label { text: qsTrId("synapse.monitor.subtitle"); color: window.textMuted; font.pixelSize: 10 }
+                    Label {
+                        text: qsTrId("synapse.monitor.subtitle")
+                        color: window.textMuted
+                        font.pixelSize: 10
+                        visible: !window.compact
+                    }
                 }
                 Item { Layout.fillWidth: true }
 
@@ -191,12 +196,20 @@ ApplicationWindow {
                     mutedColor: window.textMuted; accentColor: window.accentColor
                     Accessible.name: qsTrId("synapse.monitor.action.interval")
                 }
+                Label {
+                    text: qsTrId("synapse.monitor.action.language") + ":"
+                    color: window.textMuted
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
                 SynapseComboBox {
                     model: ["it_IT", "en_US"]
                     currentIndex: Math.max(0, model.indexOf(monitorLocalization.currentLocale))
-                    textForValue: function(value) { return value === "it_IT" ? "IT" : "EN" }
+                    textForValue: function(value) {
+                        return value === "it_IT" ? "Italiano" : "English"
+                    }
                     onActivated: monitorLocalization.setLocale(String(currentValue))
-                    implicitWidth: 68
+                    implicitWidth: 112
                     surfaceColor: window.surfaceColor; hoverColor: window.hoverColor
                     borderColor: window.borderColor; textColor: window.textPrimary
                     mutedColor: window.textMuted; accentColor: window.accentColor

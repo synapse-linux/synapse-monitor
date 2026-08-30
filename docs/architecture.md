@@ -122,18 +122,22 @@ read. Host names, machine IDs and serial-number files are outside the contract.
 
 The core exposes `synapse.monitor.presentation/v1` capability discovery and
 one-view NDJSON streams. It exposes identifiers, units, availability and stable
-row identities but no command templates or visual styling. The Alpha 6 native
+row identities but no command templates or visual styling. The Alpha 7 native
 adapter owns fixed argv, child-process lifetime, framing, exact-major validation,
-line/error caps, sequence checks and identity reconciliation. A backend override
+line/error caps, sequence checks, identity reconciliation and bounded local row
+presentation. A backend override
 exists only behind explicit test authority; normal discovery considers the
 sibling and `/usr/bin/synapse-monitor` fixed locations.
 
 QML owns only layout, translated labels, generic typography, color, charts,
 animation and accessibility. It receives typed maps/models and never parses JSON
 or constructs a command, argv or executable path. A sortable header emits only
-its reviewed sort identifier; the adapter checks that identifier against the
-exact presentation allowlist before restarting the fixed stream argv. Unavailable
-history remains a null chart gap; measured zero remains a numeric point.
+its reviewed sort identifier; the adapter checks it against the exact
+presentation allowlist and reorders the accepted native model immediately. A
+column filter passes only selected opaque tokens from the adapter's finite option
+set. Sorting and filtering do not restart the stream, blank the view or invalidate
+process inspection. Unavailable values remain last in either direction;
+unavailable history remains a null chart gap and measured zero remains numeric.
 
 ## Connection-observation sandbox
 
@@ -147,6 +151,6 @@ sockets but cannot open IPv4 or IPv6 traffic.
 
 ## Authority
 
-Alpha 6 is inspection-only. There is deliberately no signal, kill, dump,
+Alpha 7 is inspection-only. There is deliberately no signal, kill, dump,
 priority, service/startup mutation, connection control, mount, cgroup mutation,
 privileged helper, subprocess execution, listener or telemetry interface.

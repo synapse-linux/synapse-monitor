@@ -51,6 +51,10 @@
       <source>synapse.monitor.status.loading</source>
       <translation>Validating the read-only monitor stream…</translation>
     </message>
+    <message id="synapse.monitor.status.detected">
+      <source>synapse.monitor.status.detected</source>
+      <translation>Detected</translation>
+    </message>
     <message id="synapse.monitor.action.close">
       <source>synapse.monitor.action.close</source>
       <translation>Close</translation>
@@ -58,6 +62,46 @@
     <message id="synapse.monitor.action.filter">
       <source>synapse.monitor.action.filter</source>
       <translation>Filter (printable ASCII, 64 bytes)</translation>
+    </message>
+    <message id="synapse.monitor.action.search-loaded">
+      <source>synapse.monitor.action.search-loaded</source>
+      <translation>Search loaded rows</translation>
+    </message>
+    <message id="synapse.monitor.filter.header-hint">
+      <source>synapse.monitor.filter.header-hint</source>
+      <translation>Sort or filter from a column header</translation>
+    </message>
+    <message id="synapse.monitor.filter.loaded-rows">
+      <source>synapse.monitor.filter.loaded-rows</source>
+      <translation>loaded rows</translation>
+    </message>
+    <message id="synapse.monitor.filter.column">
+      <source>synapse.monitor.filter.column</source>
+      <translation>Filter column</translation>
+    </message>
+    <message id="synapse.monitor.filter.title">
+      <source>synapse.monitor.filter.title</source>
+      <translation>Column filter</translation>
+    </message>
+    <message id="synapse.monitor.filter.search">
+      <source>synapse.monitor.filter.search</source>
+      <translation>Search values</translation>
+    </message>
+    <message id="synapse.monitor.filter.select-all">
+      <source>synapse.monitor.filter.select-all</source>
+      <translation>Select all</translation>
+    </message>
+    <message id="synapse.monitor.filter.select-none">
+      <source>synapse.monitor.filter.select-none</source>
+      <translation>Select none</translation>
+    </message>
+    <message id="synapse.monitor.filter.clear">
+      <source>synapse.monitor.filter.clear</source>
+      <translation>Clear filter</translation>
+    </message>
+    <message id="synapse.monitor.filter.apply">
+      <source>synapse.monitor.filter.apply</source>
+      <translation>Apply</translation>
     </message>
     <message id="synapse.monitor.action.sort">
       <source>synapse.monitor.action.sort</source>
@@ -91,6 +135,10 @@
       <source>synapse.monitor.metric.gpu</source>
       <translation>GPU</translation>
     </message>
+    <message id="synapse.monitor.metric.gpu-memory">
+      <source>synapse.monitor.metric.gpu-memory</source>
+      <translation>GPU memory</translation>
+    </message>
     <message id="synapse.monitor.metric.disk">
       <source>synapse.monitor.metric.disk</source>
       <translation>Disk</translation>
@@ -122,6 +170,34 @@
     <message id="synapse.monitor.metric.vram">
       <source>synapse.monitor.metric.vram</source>
       <translation>VRAM</translation>
+    </message>
+    <message id="synapse.monitor.gpu-memory.no-device">
+      <source>synapse.monitor.gpu-memory.no-device</source>
+      <translation>No GPU detected</translation>
+    </message>
+    <message id="synapse.monitor.gpu-memory.driver-reported">
+      <source>synapse.monitor.gpu-memory.driver-reported</source>
+      <translation>driver-reported</translation>
+    </message>
+    <message id="synapse.monitor.gpu-memory.unavailable">
+      <source>synapse.monitor.gpu-memory.unavailable</source>
+      <translation>No reliable driver measurement</translation>
+    </message>
+    <message id="synapse.monitor.gpu-memory.shared-unavailable">
+      <source>synapse.monitor.gpu-memory.shared-unavailable</source>
+      <translation>Shared system memory; GEM use unavailable without added privilege</translation>
+    </message>
+    <message id="synapse.monitor.gpu-memory.shared-kind">
+      <source>synapse.monitor.gpu-memory.shared-kind</source>
+      <translation>Shared system memory (non-additive)</translation>
+    </message>
+    <message id="synapse.monitor.gpu-memory.driver-kind">
+      <source>synapse.monitor.gpu-memory.driver-kind</source>
+      <translation>Driver-reported graphics memory</translation>
+    </message>
+    <message id="synapse.monitor.value.shared">
+      <source>synapse.monitor.value.shared</source>
+      <translation>Shared</translation>
     </message>
     <message id="synapse.monitor.metric.temperature">
       <source>synapse.monitor.metric.temperature</source>

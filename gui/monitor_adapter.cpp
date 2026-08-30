@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "monitor_adapter.h"
 
+#include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -97,6 +98,20 @@ bool boundedHistory(const QJsonObject &history) {
     return true;
 }
 
+bool boundedText(const QJsonValue &value, int maximumBytes, bool nullable = false) {
+    if (nullable && value.isNull()) return true;
+    if (!value.isString()) return false;
+    const QString text = value.toString();
+    if (text.toUtf8().size() > maximumBytes) return false;
+    for (const QChar character : text)
+        if (character.unicode() < 0x20 || character.unicode() == 0x7f) return false;
+    return true;
+}
+
+bool optionalInteger(const QJsonValue &value, qint64 minimum) {
+    return value.isNull() || integerValue(value, minimum);
+}
+
 bool uniqueRows(const QJsonArray &rows, const QString &view, int rowLimit,
                 QVariantList *variantRows, QStringList *identities) {
     if (rows.size() > rowLimit) return false;
@@ -112,20 +127,54 @@ bool uniqueRows(const QJsonArray &rows, const QString &view, int rowLimit,
         if (view == QStringLiteral("processes")) {
             qint64 pid = 0;
             qint64 start = 0;
+            const QString processClass = row.value(QStringLiteral("class")).toString();
             if (!integerValue(row.value(QStringLiteral("pid")), 1, &pid)
                 || !integerValue(row.value(QStringLiteral("startTicks")), 1, &start)
-                || !row.value(QStringLiteral("name")).isString())
+                || !optionalInteger(row.value(QStringLiteral("uid")), 0)
+                || !boundedText(row.value(QStringLiteral("name")), 256)
+                || !boundedText(row.value(QStringLiteral("class")), 16)
+                || !QStringList({QStringLiteral("application"),
+                                 QStringLiteral("system"),
+                                 QStringLiteral("kernel")}).contains(processClass)
+                || !boundedText(row.value(QStringLiteral("state")), 8)
+                || !integerValue(row.value(QStringLiteral("threads")), 0)
+                || !optionalInteger(row.value(QStringLiteral("cpuPercentMilli")), 0)
+                || !integerValue(row.value(QStringLiteral("residentBytes")), 0)
+                || !optionalInteger(row.value(QStringLiteral("readBytesPerSecond")), 0)
+                || !optionalInteger(row.value(QStringLiteral("writeBytesPerSecond")), 0))
                 return false;
             identity = QString::number(pid) + QLatin1Char('/') + QString::number(start);
         } else if (view == QStringLiteral("services")) {
-            if (!row.value(QStringLiteral("name")).isString()) return false;
+            if (!boundedText(row.value(QStringLiteral("name")), 512)
+                || !boundedText(row.value(QStringLiteral("description")), 512)
+                || !boundedText(row.value(QStringLiteral("status")), 32)
+                || !boundedText(row.value(QStringLiteral("startup")), 32)
+                || !optionalInteger(row.value(QStringLiteral("pid")), 1)
+                || !boundedText(row.value(QStringLiteral("user")), 256)
+                || !boundedText(row.value(QStringLiteral("executable")), 512))
+                return false;
             identity = row.value(QStringLiteral("name")).toString();
         } else if (view == QStringLiteral("startup")) {
-            if (!row.value(QStringLiteral("id")).isString()) return false;
+            if (!boundedText(row.value(QStringLiteral("id")), 512)
+                || !boundedText(row.value(QStringLiteral("name")), 512)
+                || !boundedText(row.value(QStringLiteral("publisher")), 512)
+                || !boundedText(row.value(QStringLiteral("status")), 32)
+                || !boundedText(row.value(QStringLiteral("type")), 32)
+                || !boundedText(row.value(QStringLiteral("scope")), 32)
+                || !boundedText(row.value(QStringLiteral("location")), 128)
+                || !boundedText(row.value(QStringLiteral("command")), 512))
+                return false;
             identity = row.value(QStringLiteral("id")).toString();
         } else if (view == QStringLiteral("connections")) {
             qint64 inode = 0;
-            if (!integerValue(row.value(QStringLiteral("socketInode")), 1, &inode)) return false;
+            if (!integerValue(row.value(QStringLiteral("socketInode")), 1, &inode)
+                || !boundedText(row.value(QStringLiteral("protocol")), 16)
+                || !boundedText(row.value(QStringLiteral("local")), 128)
+                || !boundedText(row.value(QStringLiteral("remote")), 128)
+                || !boundedText(row.value(QStringLiteral("state")), 32)
+                || !optionalInteger(row.value(QStringLiteral("pid")), 1)
+                || !boundedText(row.value(QStringLiteral("process")), 256, true))
+                return false;
             identity = QString::number(inode);
         } else {
             return false;
@@ -140,9 +189,32 @@ bool uniqueRows(const QJsonArray &rows, const QString &view, int rowLimit,
     return true;
 }
 
+bool validProcessSummary(const QJsonObject &root) {
+    if (!root.value(QStringLiteral("summary")).isObject()) return false;
+    const QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
+    if (!summary.value(QStringLiteral("gpu")).isObject()) return false;
+    const QJsonObject gpu = summary.value(QStringLiteral("gpu")).toObject();
+    const bool present = gpu.value(QStringLiteral("present")).toBool(false);
+    const QJsonValue memoryKind = gpu.value(QStringLiteral("memoryKind"));
+    const QStringList memoryKinds = {QStringLiteral("shared"),
+                                     QStringLiteral("driver-reported-vram"),
+                                     QStringLiteral("unavailable")};
+    return gpu.value(QStringLiteral("present")).isBool()
+        && gpu.value(QStringLiteral("available")).isBool()
+        && gpu.value(QStringLiteral("memoryAvailable")).isBool()
+        && ((!present && memoryKind.isNull())
+            || (present && memoryKind.isString()
+                && memoryKinds.contains(memoryKind.toString())))
+        && optionalInteger(gpu.value(QStringLiteral("card")), 0)
+        && optionalInteger(gpu.value(QStringLiteral("busyPercentMilli")), 0)
+        && optionalInteger(gpu.value(QStringLiteral("memoryUsedBytes")), 0)
+        && optionalInteger(gpu.value(QStringLiteral("memoryTotalBytes")), 0);
+}
+
 bool validPerformance(const QJsonObject &root) {
     if (!root.value(QStringLiteral("cpu")).isObject()
         || !root.value(QStringLiteral("memory")).isObject()
+        || !root.value(QStringLiteral("gpu")).isObject()
         || !root.value(QStringLiteral("gpus")).isObject()
         || !root.value(QStringLiteral("thermals")).isObject()
         || !root.value(QStringLiteral("disks")).isObject()
@@ -150,6 +222,7 @@ bool validPerformance(const QJsonObject &root) {
         || !root.value(QStringLiteral("history")).isObject())
         return false;
     const QJsonObject cpu = root.value(QStringLiteral("cpu")).toObject();
+    const QJsonObject gpu = root.value(QStringLiteral("gpu")).toObject();
     const QJsonObject gpus = root.value(QStringLiteral("gpus")).toObject();
     const QJsonObject thermals = root.value(QStringLiteral("thermals")).toObject();
     const QJsonObject disks = root.value(QStringLiteral("disks")).toObject();
@@ -168,6 +241,35 @@ bool validPerformance(const QJsonObject &root) {
         || network.value(QStringLiteral("rows")).toArray().size() > 128
         || gpus.value(QStringLiteral("integratedGpuTemperatureInferred")).toBool(true))
         return false;
+    const QStringList memoryKinds = {QStringLiteral("shared"),
+                                     QStringLiteral("driver-reported-vram"),
+                                     QStringLiteral("unavailable")};
+    const bool gpuPresent = gpu.value(QStringLiteral("present")).toBool(false);
+    const QJsonValue memoryKind = gpu.value(QStringLiteral("memoryKind"));
+    if (!gpu.value(QStringLiteral("present")).isBool()
+        || !gpu.value(QStringLiteral("available")).isBool()
+        || !gpu.value(QStringLiteral("memoryAvailable")).isBool()
+        || (gpuPresent && (!memoryKind.isString()
+                           || !memoryKinds.contains(memoryKind.toString())))
+        || (!gpuPresent && !memoryKind.isNull())
+        || !optionalInteger(gpu.value(QStringLiteral("card")), 0)
+        || !optionalInteger(gpu.value(QStringLiteral("busyPercentMilli")), 0)
+        || !optionalInteger(gpu.value(QStringLiteral("memoryUsedBytes")), 0)
+        || !optionalInteger(gpu.value(QStringLiteral("memoryTotalBytes")), 0))
+        return false;
+    for (const QJsonValue entry : gpus.value(QStringLiteral("rows")).toArray()) {
+        if (!entry.isObject()) return false;
+        const QJsonObject row = entry.toObject();
+        if (!integerValue(row.value(QStringLiteral("card")), 0)
+            || !row.value(QStringLiteral("memoryKind")).isString()
+            || !memoryKinds.contains(row.value(QStringLiteral("memoryKind")).toString())
+            || !optionalInteger(row.value(QStringLiteral("utilizationPercentMilli")), 0)
+            || !optionalInteger(row.value(QStringLiteral("memoryUsedBytes")), 0)
+            || !optionalInteger(row.value(QStringLiteral("memoryTotalBytes")), 0)
+            || !optionalInteger(row.value(QStringLiteral("temperatureMillidegreesCelsius")),
+                                -1000000))
+            return false;
+    }
     return boundedHistory(root.value(QStringLiteral("history")).toObject());
 }
 
@@ -204,6 +306,125 @@ bool printableFilter(const QString &filter) {
     for (const QChar character : filter)
         if (character.unicode() < 0x20 || character.unicode() > 0x7e) return false;
     return true;
+}
+
+QStringList displayColumns(const QString &view) {
+    if (view == QStringLiteral("processes"))
+        return {QStringLiteral("name"), QStringLiteral("class"),
+                QStringLiteral("pid"), QStringLiteral("uid"),
+                QStringLiteral("state"), QStringLiteral("threads"),
+                QStringLiteral("cpuPercentMilli"), QStringLiteral("residentBytes"),
+                QStringLiteral("readBytesPerSecond"),
+                QStringLiteral("writeBytesPerSecond")};
+    if (view == QStringLiteral("services"))
+        return {QStringLiteral("name"), QStringLiteral("description"),
+                QStringLiteral("status"), QStringLiteral("startup"),
+                QStringLiteral("pid"), QStringLiteral("user"),
+                QStringLiteral("executable")};
+    if (view == QStringLiteral("startup"))
+        return {QStringLiteral("name"), QStringLiteral("publisher"),
+                QStringLiteral("status"), QStringLiteral("type"),
+                QStringLiteral("location"), QStringLiteral("command")};
+    if (view == QStringLiteral("connections"))
+        return {QStringLiteral("protocol"), QStringLiteral("local"),
+                QStringLiteral("remote"), QStringLiteral("state"),
+                QStringLiteral("pid"), QStringLiteral("process")};
+    return {};
+}
+
+bool numericColumn(const QString &view, const QString &column) {
+    if (view == QStringLiteral("processes"))
+        return column == QStringLiteral("pid") || column == QStringLiteral("uid")
+            || column == QStringLiteral("threads")
+            || column == QStringLiteral("cpuPercentMilli")
+            || column == QStringLiteral("residentBytes")
+            || column == QStringLiteral("readBytesPerSecond")
+            || column == QStringLiteral("writeBytesPerSecond");
+    if (view == QStringLiteral("services")
+        || view == QStringLiteral("connections"))
+        return column == QStringLiteral("pid");
+    return false;
+}
+
+bool unavailableValue(const QVariant &value) {
+    return !value.isValid() || value.isNull();
+}
+
+QString canonicalValue(const QVariant &value) {
+    if (unavailableValue(value)) return QStringLiteral("u:");
+    switch (value.typeId()) {
+        case QMetaType::Bool:
+            return value.toBool() ? QStringLiteral("b:1") : QStringLiteral("b:0");
+        case QMetaType::Char:
+        case QMetaType::SChar:
+        case QMetaType::Short:
+        case QMetaType::Int:
+        case QMetaType::Long:
+        case QMetaType::LongLong:
+            return QStringLiteral("i:%1").arg(value.toLongLong());
+        case QMetaType::UChar:
+        case QMetaType::UShort:
+        case QMetaType::UInt:
+        case QMetaType::ULong:
+        case QMetaType::ULongLong:
+            return QStringLiteral("n:%1").arg(value.toULongLong());
+        case QMetaType::Float:
+        case QMetaType::Double: {
+            const double number = value.toDouble();
+            return std::isfinite(number)
+                ? QStringLiteral("d:%1").arg(number, 0, 'g', 17)
+                : QStringLiteral("u:");
+        }
+        default:
+            return QStringLiteral("s:") + value.toString();
+    }
+}
+
+QString filterToken(const QString &view, const QString &column,
+                    const QVariant &value) {
+    QByteArray input = view.toUtf8();
+    input.append('\0');
+    input.append(column.toUtf8());
+    input.append('\0');
+    input.append(canonicalValue(value).toUtf8());
+    return QString::fromLatin1(
+        QCryptographicHash::hash(input, QCryptographicHash::Sha256).toHex());
+}
+
+int compareValues(const QString &view, const QString &column,
+                  const QVariant &left, const QVariant &right) {
+    const bool leftUnavailable = unavailableValue(left);
+    const bool rightUnavailable = unavailableValue(right);
+    if (leftUnavailable != rightUnavailable) return leftUnavailable ? 1 : -1;
+    if (leftUnavailable) return 0;
+    if (numericColumn(view, column)) {
+        const double leftNumber = left.toDouble();
+        const double rightNumber = right.toDouble();
+        if (leftNumber < rightNumber) return -1;
+        if (leftNumber > rightNumber) return 1;
+        return 0;
+    }
+    if (left.typeId() == QMetaType::Bool && right.typeId() == QMetaType::Bool) {
+        if (left.toBool() == right.toBool()) return 0;
+        return left.toBool() ? 1 : -1;
+    }
+    const QString leftText = left.toString();
+    const QString rightText = right.toString();
+    const int folded = QString::compare(leftText, rightText, Qt::CaseInsensitive);
+    if (folded != 0) return folded;
+    return QString::compare(leftText, rightText, Qt::CaseSensitive);
+}
+
+bool rowMatchesText(const QVariantMap &row, const QStringList &columns,
+                    const QString &filter) {
+    if (filter.isEmpty()) return true;
+    for (const QString &column : columns) {
+        const QVariant value = row.value(column);
+        if (!unavailableValue(value)
+            && value.toString().contains(filter, Qt::CaseInsensitive))
+            return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -455,9 +676,10 @@ bool decodePresentation(const QByteArray &payload, MonitorPresentationContract *
     return true;
 }
 
+// Named contract bounds deliberately remain plain integers at this API boundary.
 bool decodeFrame(const QByteArray &payload, const MonitorPresentationContract &presentation,
                  const QString &expectedView, qint64 expectedSequence,
-                 int expectedIntervalMilliseconds, int rowLimit,
+                 int expectedIntervalMilliseconds, int rowLimit, // NOLINT(bugprone-easily-swappable-parameters)
                  QVariantMap *frame, QVariantList *rows, QStringList *identities,
                  QString *errorId) {
     if (!frame || !rows || !identities || !presentation.views.contains(expectedView))
@@ -487,6 +709,8 @@ bool decodeFrame(const QByteArray &payload, const MonitorPresentationContract &p
 
     QVariantList variantRows;
     QStringList rowIdentities;
+    if (expectedView == QStringLiteral("processes") && !validProcessSummary(root))
+        return fail(errorId, QStringLiteral("stream-invalid"));
     if (expectedView == QStringLiteral("performance")) {
         if (!validPerformance(root)) return fail(errorId, QStringLiteral("stream-invalid"));
     } else if (expectedView == QStringLiteral("information")) {
@@ -635,8 +859,9 @@ bool MonitorAdapter::initialize(const QString &initialView) {
     initialized_ = true;
     currentView_ = initialView;
     sortId_ = defaultSort(currentView_);
+    sortAscending_ = defaultSortAscending(sortId_);
     groupId_ = defaultGroup(currentView_);
-    rowLimit_ = std::clamp(128, presentation_.rowLimitMinimum,
+    rowLimit_ = std::clamp(512, presentation_.rowLimitMinimum,
                            presentation_.rowLimitMaximum);
     sampleMilliseconds_ = std::clamp(250, presentation_.sampleMinimum,
                                      presentation_.sampleMaximum);
@@ -644,6 +869,7 @@ bool MonitorAdapter::initialize(const QString &initialView) {
                                        presentation_.intervalMaximum);
     emit capabilitiesChanged();
     emit selectionChanged();
+    emit rowPresentationChanged();
     return startStream();
 }
 
@@ -657,11 +883,21 @@ qint64 MonitorAdapter::sequence() const { return sequence_; }
 QString MonitorAdapter::errorId() const { return errorId_; }
 QString MonitorAdapter::filter() const { return filter_; }
 QString MonitorAdapter::sortId() const { return sortId_; }
+bool MonitorAdapter::sortAscending() const { return sortAscending_; }
 QString MonitorAdapter::groupId() const { return groupId_; }
 QStringList MonitorAdapter::sortIds() const { return currentCapability().sortIds; }
 QStringList MonitorAdapter::groupIds() const { return currentCapability().groupIds; }
 bool MonitorAdapter::filterSupported() const { return currentCapability().filterSupported; }
 int MonitorAdapter::intervalMilliseconds() const { return intervalMilliseconds_; }
+QStringList MonitorAdapter::filteredColumnIds() const {
+    QStringList result = columnFilters_.keys();
+    result.sort(Qt::CaseSensitive);
+    return result;
+}
+int MonitorAdapter::visibleRowCount() const { return rows_.rowCount(); }
+int MonitorAdapter::sourceRowCount() const {
+    return static_cast<int>(acceptedRows_.size());
+}
 QVariantMap MonitorAdapter::inspection() const { return inspection_; }
 bool MonitorAdapter::inspectionBusy() const { return inspectionBusy_; }
 QString MonitorAdapter::inspectionErrorId() const { return inspectionErrorId_; }
@@ -721,18 +957,27 @@ bool MonitorAdapter::loadPresentation() {
     return true;
 }
 
-bool MonitorAdapter::startStream() {
+bool MonitorAdapter::startStream(bool preserveFrame) {
     if (!initialized_ || !presentation_.views.contains(currentView_)) return false;
+    const bool keepVisibleFrame = preserveFrame && ready_ && !payload_.isEmpty();
     stopStream();
     streamBuffer_.clear();
     streamErrorBuffer_.clear();
-    payload_.clear();
-    rows_.clear();
-    sequence_ = -1;
-    ready_ = false;
+    streamSequence_ = -1;
     streaming_ = false;
     errorId_.clear();
-    emit frameChanged();
+    if (!keepVisibleFrame) {
+        payload_.clear();
+        acceptedRows_.clear();
+        acceptedIdentities_.clear();
+        columnFilters_.clear();
+        issuedFilterTokens_.clear();
+        rows_.clear();
+        sequence_ = -1;
+        ready_ = false;
+        emit frameChanged();
+        emit rowPresentationChanged();
+    }
     emit stateChanged();
 
     QStringList arguments = {QStringLiteral("stream"), QStringLiteral("--view"), currentView_,
@@ -744,13 +989,11 @@ bool MonitorAdapter::startStream() {
     arguments.append({QStringLiteral("--interval-ms"),
                       QString::number(intervalMilliseconds_),
                       QStringLiteral("--limit"), QString::number(rowLimit_)});
-    const MonitorViewCapability capability = currentCapability();
-    if (!sortId_.isEmpty())
-        arguments.append({QStringLiteral("--sort"), sortId_});
+    const QString coreSort = defaultSort(currentView_);
+    if (!coreSort.isEmpty())
+        arguments.append({QStringLiteral("--sort"), coreSort});
     if (!groupId_.isEmpty())
         arguments.append({QStringLiteral("--group"), groupId_});
-    if (capability.filterSupported && !filter_.isEmpty())
-        arguments.append({QStringLiteral("--filter"), filter_});
 
     stream_.setProgram(backendPath_);
     stream_.setArguments(arguments);
@@ -798,15 +1041,19 @@ void MonitorAdapter::consumeStreamOutput() {
         QVariantList rows;
         QStringList identities;
         QString parseError;
-        if (!MonitorContracts::decodeFrame(line, presentation_, currentView_, sequence_ + 1,
+        if (!MonitorContracts::decodeFrame(line, presentation_, currentView_,
+                                           streamSequence_ + 1,
                                            intervalMilliseconds_, rowLimit_, &frame, &rows,
                                            &identities, &parseError)) {
             failStream(parseError.isEmpty() ? QStringLiteral("stream-invalid") : parseError);
             return;
         }
         payload_ = std::move(frame);
-        rows_.replace(std::move(rows), std::move(identities));
-        ++sequence_;
+        acceptedRows_ = std::move(rows);
+        acceptedIdentities_ = std::move(identities);
+        ++streamSequence_;
+        sequence_ = streamSequence_;
+        rebuildPresentedRows();
         const bool wasReady = ready_;
         ready_ = true;
         errorId_.clear();
@@ -847,9 +1094,13 @@ bool MonitorAdapter::selectView(const QString &viewId) {
     closeInspection();
     currentView_ = viewId;
     filter_.clear();
+    columnFilters_.clear();
+    issuedFilterTokens_.clear();
     sortId_ = defaultSort(viewId);
+    sortAscending_ = defaultSortAscending(sortId_);
     groupId_ = defaultGroup(viewId);
     emit selectionChanged();
+    emit rowPresentationChanged();
     return startStream();
 }
 
@@ -862,8 +1113,8 @@ bool MonitorAdapter::setFilter(const QString &filter) {
     }
     if (filter == filter_) return true;
     filter_ = filter;
-    emit selectionChanged();
-    return startStream();
+    rebuildPresentedRows();
+    return true;
 }
 
 bool MonitorAdapter::setSortId(const QString &sortId) {
@@ -874,8 +1125,24 @@ bool MonitorAdapter::setSortId(const QString &sortId) {
     }
     if (sortId == sortId_) return true;
     sortId_ = sortId;
-    emit selectionChanged();
-    return startStream();
+    sortAscending_ = defaultSortAscending(sortId_);
+    rebuildPresentedRows();
+    return true;
+}
+
+bool MonitorAdapter::requestSort(const QString &sortId) {
+    if (!initialized_ || sortId.isEmpty() || !sortIds().contains(sortId)) {
+        errorId_ = QStringLiteral("sort-invalid");
+        emit stateChanged();
+        return false;
+    }
+    if (sortId == sortId_) sortAscending_ = !sortAscending_;
+    else {
+        sortId_ = sortId;
+        sortAscending_ = defaultSortAscending(sortId_);
+    }
+    rebuildPresentedRows();
+    return true;
 }
 
 bool MonitorAdapter::setGroupId(const QString &groupId) {
@@ -887,7 +1154,7 @@ bool MonitorAdapter::setGroupId(const QString &groupId) {
     if (groupId == groupId_) return true;
     groupId_ = groupId;
     emit selectionChanged();
-    return startStream();
+    return startStream(true);
 }
 
 bool MonitorAdapter::setIntervalMilliseconds(int milliseconds) {
@@ -900,7 +1167,109 @@ bool MonitorAdapter::setIntervalMilliseconds(int milliseconds) {
     if (milliseconds == intervalMilliseconds_) return true;
     intervalMilliseconds_ = milliseconds;
     emit selectionChanged();
-    return startStream();
+    return startStream(true);
+}
+
+QVariantList MonitorAdapter::columnFilterOptions(const QString &columnId) const {
+    if (!validDisplayColumn(columnId)) return {};
+    struct Option {
+        QString token;
+        QVariant value;
+        int count = 0;
+    };
+    QHash<QString, qsizetype> indices;
+    QList<Option> options;
+    for (const QVariant &entry : acceptedRows_) {
+        const QVariant value = entry.toMap().value(columnId);
+        const QString token = filterToken(currentView_, columnId, value);
+        const auto found = indices.constFind(token);
+        if (found != indices.constEnd()) {
+            options[*found].count++;
+            continue;
+        }
+        if (options.size() >= kMaximumFilterOptions) return {};
+        indices.insert(token, options.size());
+        options.append({token, value, 1});
+    }
+    std::sort(options.begin(), options.end(), [this, &columnId](const Option &left,
+                                                                const Option &right) {
+        const int compared = compareValues(currentView_, columnId,
+                                           left.value, right.value);
+        return compared != 0 ? compared < 0 : left.token < right.token;
+    });
+    QVariantList result;
+    QSet<QString> issued;
+    result.reserve(options.size());
+    for (const Option &option : options) {
+        QVariantMap output;
+        output.insert(QStringLiteral("token"), option.token);
+        output.insert(QStringLiteral("value"), option.value);
+        output.insert(QStringLiteral("unavailable"), unavailableValue(option.value));
+        output.insert(QStringLiteral("count"), option.count);
+        result.append(output);
+        issued.insert(option.token);
+    }
+    issuedFilterTokens_.insert(columnId, issued);
+    return result;
+}
+
+QStringList MonitorAdapter::activeColumnFilterTokens(const QString &columnId) const {
+    QStringList result = columnFilters_.value(columnId).values();
+    result.sort(Qt::CaseSensitive);
+    return result;
+}
+
+bool MonitorAdapter::columnFilterActive(const QString &columnId) const {
+    return validDisplayColumn(columnId) && columnFilters_.contains(columnId);
+}
+
+bool MonitorAdapter::setColumnFilter(const QString &columnId,
+                                     const QStringList &tokens, bool enabled) {
+    if (!initialized_ || !validDisplayColumn(columnId)
+        || tokens.size() > kMaximumFilterOptions) {
+        errorId_ = QStringLiteral("column-filter-invalid");
+        emit stateChanged();
+        return false;
+    }
+    if (!enabled) return clearColumnFilter(columnId);
+    const QSet<QString> issued = issuedFilterTokens_.value(columnId);
+    QSet<QString> allowed = issued;
+    const QVariantList options = columnFilterOptions(columnId);
+    for (const QVariant &entry : options)
+        allowed.insert(entry.toMap().value(QStringLiteral("token")).toString());
+    QSet<QString> selected;
+    for (const QString &token : tokens) {
+        if (token.size() != 64 || !allowed.contains(token)
+            || selected.contains(token)) {
+            errorId_ = QStringLiteral("column-filter-invalid");
+            emit stateChanged();
+            return false;
+        }
+        selected.insert(token);
+    }
+    if ((!issued.isEmpty() && selected == issued)
+        || (issued.isEmpty() && !allowed.isEmpty() && selected == allowed))
+        columnFilters_.remove(columnId);
+    else columnFilters_.insert(columnId, selected);
+    rebuildPresentedRows();
+    return true;
+}
+
+bool MonitorAdapter::clearColumnFilter(const QString &columnId) {
+    if (!initialized_ || !validDisplayColumn(columnId)) {
+        errorId_ = QStringLiteral("column-filter-invalid");
+        emit stateChanged();
+        return false;
+    }
+    if (columnFilters_.remove(columnId) == 0) return true;
+    rebuildPresentedRows();
+    return true;
+}
+
+void MonitorAdapter::clearAllColumnFilters() {
+    if (columnFilters_.isEmpty()) return;
+    columnFilters_.clear();
+    rebuildPresentedRows();
 }
 
 bool MonitorAdapter::inspectProcess(qint64 pid, qint64 startTicks) {
@@ -979,6 +1348,90 @@ void MonitorAdapter::closeInspection() {
     inspectionOutput_.clear();
     inspectionError_.clear();
     emit inspectionChanged();
+}
+
+void MonitorAdapter::rebuildPresentedRows() {
+    const QStringList columns = displayColumns(currentView_);
+    const QString field = sortField(sortId_);
+    QList<qsizetype> selected;
+    selected.reserve(acceptedRows_.size());
+    for (qsizetype index = 0; index < acceptedRows_.size(); ++index) {
+        const QVariantMap row = acceptedRows_.at(index).toMap();
+        if (!rowMatchesText(row, columns, filter_)) continue;
+        bool retained = true;
+        for (auto filter = columnFilters_.constBegin();
+             filter != columnFilters_.constEnd(); ++filter) {
+            const QString token = filterToken(currentView_, filter.key(),
+                                              row.value(filter.key()));
+            if (!filter.value().contains(token)) {
+                retained = false;
+                break;
+            }
+        }
+        if (retained) selected.append(index);
+    }
+    if (!field.isEmpty()) {
+        std::sort(selected.begin(), selected.end(),
+                  [this, &field](qsizetype leftIndex, qsizetype rightIndex) {
+            const QVariantMap left = acceptedRows_.at(leftIndex).toMap();
+            const QVariantMap right = acceptedRows_.at(rightIndex).toMap();
+            int compared = compareValues(currentView_, field,
+                                         left.value(field), right.value(field));
+            if (compared != 0) {
+                const bool eitherUnavailable = unavailableValue(left.value(field))
+                    || unavailableValue(right.value(field));
+                if (!sortAscending_ && !eitherUnavailable) compared = -compared;
+                return compared < 0;
+            }
+            const int identity = QString::compare(acceptedIdentities_.at(leftIndex),
+                                                  acceptedIdentities_.at(rightIndex),
+                                                  Qt::CaseSensitive);
+            return identity != 0 ? identity < 0 : leftIndex < rightIndex;
+        });
+    }
+    QVariantList presentedRows;
+    QStringList presentedIdentities;
+    presentedRows.reserve(selected.size());
+    presentedIdentities.reserve(selected.size());
+    for (const qsizetype index : selected) {
+        presentedRows.append(acceptedRows_.at(index));
+        presentedIdentities.append(acceptedIdentities_.at(index));
+    }
+    rows_.replace(std::move(presentedRows), std::move(presentedIdentities));
+    emit rowPresentationChanged();
+}
+
+bool MonitorAdapter::validDisplayColumn(const QString &columnId) const {
+    return displayColumns(currentView_).contains(columnId);
+}
+
+QString MonitorAdapter::sortField(const QString &sortId) const {
+    if (currentView_ == QStringLiteral("processes")) {
+        const QHash<QString, QString> fields = {
+            {QStringLiteral("name"), QStringLiteral("name")},
+            {QStringLiteral("class"), QStringLiteral("class")},
+            {QStringLiteral("pid"), QStringLiteral("pid")},
+            {QStringLiteral("user"), QStringLiteral("uid")},
+            {QStringLiteral("state"), QStringLiteral("state")},
+            {QStringLiteral("threads"), QStringLiteral("threads")},
+            {QStringLiteral("cpu"), QStringLiteral("cpuPercentMilli")},
+            {QStringLiteral("memory"), QStringLiteral("residentBytes")},
+            {QStringLiteral("read"), QStringLiteral("readBytesPerSecond")},
+            {QStringLiteral("write"), QStringLiteral("writeBytesPerSecond")}};
+        return fields.value(sortId);
+    }
+    if (currentView_ == QStringLiteral("connections")
+        && sortId == QStringLiteral("status"))
+        return QStringLiteral("state");
+    if (validDisplayColumn(sortId)) return sortId;
+    return {};
+}
+
+bool MonitorAdapter::defaultSortAscending(const QString &sortId) const {
+    if (currentView_ != QStringLiteral("processes")) return true;
+    return sortId != QStringLiteral("cpu") && sortId != QStringLiteral("memory")
+        && sortId != QStringLiteral("read") && sortId != QStringLiteral("write")
+        && sortId != QStringLiteral("threads");
 }
 
 MonitorViewCapability MonitorAdapter::currentCapability() const {

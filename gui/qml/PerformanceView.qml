@@ -23,6 +23,7 @@ Item {
     property var memory: frameData.memory || ({})
     property var gpu: frameData.gpu || ({})
     property var gpus: frameData.gpus || ({})
+    property var primaryGpu: gpus.rows && gpus.rows.length ? gpus.rows[0] : ({})
     property var thermals: frameData.thermals || ({})
     property var disks: frameData.disks || ({})
     property var network: frameData.network || ({})
@@ -38,6 +39,35 @@ Item {
         let amount = Math.max(0, Number(value)); let unit = 0
         while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; ++unit }
         return (unit ? amount.toFixed(1) : amount.toFixed(0)) + " " + units[unit]
+    }
+    function gpuMemoryValue(gpuRow) {
+        if (gpuRow.memoryUsedBytes !== null
+            && gpuRow.memoryUsedBytes !== undefined)
+            return root.bytes(gpuRow.memoryUsedBytes)
+        if (gpuRow.memoryKind === "shared")
+            return qsTrId("synapse.monitor.value.shared")
+        return qsTrId("synapse.monitor.value.unavailable")
+    }
+    function gpuMemoryDetail(gpuRow) {
+        if (gpuRow.memoryUsedBytes !== null
+            && gpuRow.memoryUsedBytes !== undefined)
+            return root.bytes(gpuRow.memoryTotalBytes) + " · "
+                   + qsTrId("synapse.monitor.gpu-memory.driver-reported")
+        if (gpuRow.memoryKind === "shared")
+            return qsTrId("synapse.monitor.gpu-memory.shared-unavailable")
+        if (root.gpu.present)
+            return qsTrId("synapse.monitor.gpu-memory.unavailable")
+        return qsTrId("synapse.monitor.gpu-memory.no-device")
+    }
+    function gpuMemoryLine(gpuRow) {
+        if (gpuRow.memoryUsedBytes !== null
+            && gpuRow.memoryUsedBytes !== undefined)
+            return root.bytes(gpuRow.memoryUsedBytes) + " / "
+                   + root.bytes(gpuRow.memoryTotalBytes)
+        if (gpuRow.memoryKind === "shared")
+            return qsTrId("synapse.monitor.value.shared") + " · "
+                   + qsTrId("synapse.monitor.value.unavailable")
+        return qsTrId("synapse.monitor.value.unavailable")
     }
     function temperature(value) {
         return value === null || value === undefined ? "—"
@@ -72,7 +102,7 @@ Item {
 
             GridLayout {
                 Layout.fillWidth: true
-                columns: width >= 900 ? 3 : 2
+                columns: width >= 900 ? 4 : 2
                 columnSpacing: 10
                 rowSpacing: 10
 
@@ -102,11 +132,24 @@ Item {
                     Layout.fillWidth: true
                     label: qsTrId("synapse.monitor.metric.gpu")
                     value: root.percent(root.gpu.busyPercentMilli)
-                    detail: root.gpu.present ? root.bytes(root.gpu.memoryUsedBytes)
+                    detail: root.gpu.present ? qsTrId("synapse.monitor.status.detected")
                                              : qsTrId("synapse.monitor.value.unavailable")
                     progress: root.gpu.busyPercentMilli === null
                               || root.gpu.busyPercentMilli === undefined ? -1
                               : Number(root.gpu.busyPercentMilli) / 100000
+                    accentColor: root.greenColor; surfaceColor: root.surfaceColor
+                    borderColor: root.borderColor; textColor: root.textColor; mutedColor: root.mutedColor
+                }
+                MetricCard {
+                    Layout.fillWidth: true
+                    label: qsTrId("synapse.monitor.metric.gpu-memory")
+                    value: root.gpuMemoryValue(root.primaryGpu)
+                    detail: root.gpuMemoryDetail(root.primaryGpu)
+                    progress: root.primaryGpu.memoryTotalBytes
+                              && root.primaryGpu.memoryUsedBytes !== null
+                              && root.primaryGpu.memoryUsedBytes !== undefined
+                              ? Number(root.primaryGpu.memoryUsedBytes)
+                                / Number(root.primaryGpu.memoryTotalBytes) : -1
                     accentColor: root.greenColor; surfaceColor: root.surfaceColor
                     borderColor: root.borderColor; textColor: root.textColor; mutedColor: root.mutedColor
                 }
@@ -212,6 +255,7 @@ Item {
             Repeater {
                 model: root.gpus.rows || []
                 delegate: Rectangle {
+                    id: gpuRow
                     required property var modelData
                     Layout.fillWidth: true
                     implicitHeight: gpuColumn.implicitHeight + 28
@@ -222,19 +266,33 @@ Item {
                         anchors.margins: 14; spacing: 8
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { Layout.fillWidth: true; text: modelData.model || ("GPU " + modelData.card); color: root.textColor; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                            Label { text: modelData.driver || "—"; color: root.mutedColor; font.pixelSize: 11 }
+                            Label { Layout.fillWidth: true; text: gpuRow.modelData.model || ("GPU " + gpuRow.modelData.card); color: root.textColor; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                            Label { text: gpuRow.modelData.driver || "—"; color: root.mutedColor; font.pixelSize: 11 }
                         }
                         GridLayout {
                             Layout.fillWidth: true; columns: width >= 850 ? 4 : 2; columnSpacing: 14; rowSpacing: 5
-                            Label { text: qsTrId("synapse.monitor.metric.utilization") + "  " + root.percent(modelData.utilizationPercentMilli); color: root.mutedColor }
-                            Label { text: qsTrId("synapse.monitor.metric.vram") + "  " + root.bytes(modelData.memoryUsedBytes) + " / " + root.bytes(modelData.memoryTotalBytes); color: root.mutedColor }
-                            Label { text: qsTrId("synapse.monitor.metric.temperature") + "  " + root.temperature(modelData.temperatureMillidegreesCelsius); color: root.mutedColor }
-                            Label { text: qsTrId("synapse.monitor.metric.power") + "  " + root.power(modelData.powerMicrowatts); color: root.mutedColor }
-                            Label { text: qsTrId("synapse.monitor.metric.core-clock") + "  " + root.frequency(modelData.coreClockHz); color: root.mutedColor }
-                            Label { text: qsTrId("synapse.monitor.metric.memory-clock") + "  " + root.frequency(modelData.memoryClockHz); color: root.mutedColor }
-                            Label { text: qsTrId("synapse.monitor.metric.fan") + "  " + (modelData.fanRpm === null || modelData.fanRpm === undefined ? "—" : modelData.fanRpm + " RPM"); color: root.mutedColor }
-                            Label { text: modelData.memoryKind || "—"; color: root.mutedColor; font.pixelSize: 10 }
+                            Label { text: qsTrId("synapse.monitor.metric.utilization") + "  " + root.percent(gpuRow.modelData.utilizationPercentMilli); color: root.mutedColor }
+                            Label {
+                                text: (gpuRow.modelData.memoryKind === "shared"
+                                       ? qsTrId("synapse.monitor.metric.gpu-memory")
+                                       : qsTrId("synapse.monitor.metric.vram"))
+                                      + "  " + root.gpuMemoryLine(gpuRow.modelData)
+                                color: root.mutedColor
+                            }
+                            Label { text: qsTrId("synapse.monitor.metric.temperature") + "  " + root.temperature(gpuRow.modelData.temperatureMillidegreesCelsius); color: root.mutedColor }
+                            Label { text: qsTrId("synapse.monitor.metric.power") + "  " + root.power(gpuRow.modelData.powerMicrowatts); color: root.mutedColor }
+                            Label { text: qsTrId("synapse.monitor.metric.core-clock") + "  " + root.frequency(gpuRow.modelData.coreClockHz); color: root.mutedColor }
+                            Label { text: qsTrId("synapse.monitor.metric.memory-clock") + "  " + root.frequency(gpuRow.modelData.memoryClockHz); color: root.mutedColor }
+                            Label { text: qsTrId("synapse.monitor.metric.fan") + "  " + (gpuRow.modelData.fanRpm === null || gpuRow.modelData.fanRpm === undefined ? "—" : gpuRow.modelData.fanRpm + " RPM"); color: root.mutedColor }
+                            Label {
+                                text: gpuRow.modelData.memoryKind === "shared"
+                                      ? qsTrId("synapse.monitor.gpu-memory.shared-kind")
+                                      : (gpuRow.modelData.memoryKind === "driver-reported-vram"
+                                         ? qsTrId("synapse.monitor.gpu-memory.driver-kind")
+                                         : qsTrId("synapse.monitor.value.unavailable"))
+                                color: root.mutedColor
+                                font.pixelSize: 10
+                            }
                         }
                     }
                 }

@@ -36,6 +36,24 @@ Item {
         while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; ++unit }
         return (unit ? amount.toFixed(1) : amount.toFixed(0)) + " " + units[unit]
     }
+    function gpuMemoryValue() {
+        if (root.gpu.memoryAvailable)
+            return root.bytes(root.gpu.memoryUsedBytes)
+        if (root.gpu.memoryKind === "shared")
+            return qsTrId("synapse.monitor.value.shared")
+        return qsTrId("synapse.monitor.value.unavailable")
+    }
+    function gpuMemoryDetail() {
+        if (!root.gpu.present)
+            return qsTrId("synapse.monitor.gpu-memory.no-device")
+        if (root.gpu.memoryAvailable)
+            return qsTrId("synapse.monitor.metric.of") + " "
+                   + root.bytes(root.gpu.memoryTotalBytes) + " · "
+                   + qsTrId("synapse.monitor.gpu-memory.driver-reported")
+        if (root.gpu.memoryKind === "shared")
+            return qsTrId("synapse.monitor.gpu-memory.shared-unavailable")
+        return qsTrId("synapse.monitor.gpu-memory.unavailable")
+    }
     function identifierLabel(identifier) {
         return qsTrId("synapse.monitor.id." + identifier)
     }
@@ -67,7 +85,7 @@ Item {
 
         GridLayout {
             Layout.fillWidth: true
-            columns: width >= 1040 ? 5 : (width >= 650 ? 3 : 2)
+            columns: width >= 1120 ? 6 : (width >= 650 ? 3 : 2)
             columnSpacing: 10
             rowSpacing: 10
 
@@ -93,9 +111,21 @@ Item {
                 Layout.fillWidth: true
                 label: qsTrId("synapse.monitor.metric.gpu")
                 value: root.percent(root.gpu.busyPercentMilli)
-                detail: root.gpu.present ? root.bytes(root.gpu.memoryUsedBytes) : qsTrId("synapse.monitor.value.unavailable")
+                detail: root.gpu.present ? qsTrId("synapse.monitor.status.detected")
+                                         : qsTrId("synapse.monitor.value.unavailable")
                 progress: root.gpu.busyPercentMilli === null || root.gpu.busyPercentMilli === undefined
                           ? -1 : Number(root.gpu.busyPercentMilli) / 100000
+                accentColor: root.greenColor; surfaceColor: root.surfaceColor; borderColor: root.borderColor
+                textColor: root.textColor; mutedColor: root.mutedColor
+            }
+            MetricCard {
+                Layout.fillWidth: true
+                label: qsTrId("synapse.monitor.metric.gpu-memory")
+                value: root.gpuMemoryValue()
+                detail: root.gpuMemoryDetail()
+                progress: root.gpu.memoryAvailable && root.gpu.memoryTotalBytes
+                          ? Number(root.gpu.memoryUsedBytes)
+                            / Number(root.gpu.memoryTotalBytes) : -1
                 accentColor: root.greenColor; surfaceColor: root.surfaceColor; borderColor: root.borderColor
                 textColor: root.textColor; mutedColor: root.mutedColor
             }
@@ -129,7 +159,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.maximumWidth: 380
                 visible: root.adapter.filterSupported
-                placeholderText: qsTrId("synapse.monitor.action.filter")
+                placeholderText: qsTrId("synapse.monitor.action.search-loaded")
                 color: root.textColor
                 placeholderTextColor: root.mutedColor
                 selectByMouse: true
@@ -141,20 +171,10 @@ Item {
                 }
             }
             Label {
-                text: qsTrId("synapse.monitor.action.sort")
+                text: qsTrId("synapse.monitor.filter.header-hint")
                 color: root.mutedColor
-                font.pixelSize: 11
-            }
-            SynapseComboBox {
-                id: sortBox
-                model: root.adapter.sortIds
-                currentIndex: Math.max(0, root.adapter.sortIds.indexOf(root.adapter.sortId))
-                textForValue: function(value) { return root.identifierLabel(value) }
-                onActivated: root.adapter.setSortId(String(model[currentIndex]))
-                implicitWidth: 150
-                surfaceColor: root.surfaceColor; hoverColor: root.hoverColor
-                borderColor: root.borderColor; textColor: root.textColor
-                mutedColor: root.mutedColor; accentColor: root.accentColor
+                font.pixelSize: 10
+                visible: root.width >= 900
             }
             Label {
                 text: qsTrId("synapse.monitor.action.group")
@@ -176,9 +196,12 @@ Item {
             }
             Item { Layout.fillWidth: true }
             Label {
-                text: root.adapter.sequence >= 0 ? "#" + root.adapter.sequence : "—"
+                text: root.adapter.visibleRowCount + " / "
+                      + root.adapter.sourceRowCount + " "
+                      + qsTrId("synapse.monitor.filter.loaded-rows")
                 color: root.mutedColor
                 font.pixelSize: 11
+                visible: root.width >= 900
             }
         }
 
@@ -192,13 +215,16 @@ Item {
                 Layout.fillHeight: true
                 Layout.minimumWidth: 360
                 tableModel: root.adapter.rows
+                filterController: root.adapter
                 columnDefinitions: root.columns()
                 sortableIds: root.adapter.sortIds
+                activeFilterIds: root.adapter.filteredColumnIds
                 activeSortId: root.adapter.sortId
+                sortAscending: root.adapter.sortAscending
                 surfaceColor: root.surfaceColor; alternateColor: root.alternateColor
                 hoverColor: root.hoverColor; borderColor: root.borderColor
                 textColor: root.textColor; mutedColor: root.mutedColor; accentColor: root.accentColor
-                onSortRequested: function(sortId) { root.adapter.setSortId(sortId) }
+                onSortRequested: function(sortId) { root.adapter.requestSort(sortId) }
                 onRowActivated: function(record) {
                     root.adapter.inspectProcess(Number(record.pid), Number(record.startTicks))
                 }

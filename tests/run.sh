@@ -4,7 +4,7 @@ set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
 repo=$(cd "$(dirname "$0")/.." && pwd)
-[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.6' ]]
+[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.7' ]]
 $binary --help | grep -Fq 'The command is read-only'
 $binary describe --format json >"${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
 python3 - "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json" \
@@ -14,7 +14,7 @@ x=json.load(open(sys.argv[1]));schema=json.load(open(sys.argv[2]))
 assert schema['$schema']=='https://json-schema.org/draft/2020-12/schema'
 assert schema['properties']['schema']['const']=='synapse.monitor.presentation/v1'
 assert x['schema']=='synapse.monitor.presentation/v1' and x['readOnly'] is True
-assert x['producer']['version']=='0.5.0-alpha.6'
+assert x['producer']['version']=='0.5.0-alpha.7'
 assert [v['id'] for v in x['views']]==['processes','performance','services','startup','connections','information']
 assert [v['ordinal'] for v in x['views']]==[1,2,3,4,5,6]
 assert x['formats']['stream']['mediaType']=='application/x-ndjson'
@@ -264,6 +264,7 @@ assert x['summary']['cpu']['available'] and x['summary']['cpu']['busyPercentMill
 assert x['summary']['memory']=={'available':True,'totalBytes':1024000000,'availableBytes':409600000,'usedBytes':614400000}
 assert x['summary']['gpu']['present'] and x['summary']['gpu']['available']
 assert x['summary']['gpu']['busyPercentMilli']==42000
+assert x['summary']['gpu']['memoryKind']=='driver-reported-vram'
 assert x['summary']['disk']['available'] and x['summary']['disk']['readBytesPerSecond']>0 and x['summary']['disk']['writeBytesPerSecond']>0
 assert x['summary']['network']['available'] and x['summary']['network']['receiveBytesPerSecond']>0
 assert x['coverage']['rowsObserved']==3 and x['coverage']['rowsMatched']==3 and x['coverage']['malformed']==1
@@ -289,6 +290,7 @@ assert x['schema']=='synapse.monitor.performance/v2' and x['view']=='performance
 assert '/sys/' not in raw and '/usr/share/' not in raw
 assert x['cpu']['logicalProcessorCount']==2
 assert x['cpu']['logicalProcessors']==[30000,30000]
+assert x['gpu']['memoryKind']=='driver-reported-vram'
 assert x['gpus']['rowsObserved']==2 and x['gpus']['truncated'] is True
 assert x['gpus']['integratedGpuTemperatureInferred'] is False
 amd,intel=x['gpus']['rows']
