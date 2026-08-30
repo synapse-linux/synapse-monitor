@@ -36,7 +36,7 @@ Item {
             { key: "command", sortId: "command", label: qsTrId("synapse.monitor.column.command"), width: 280 }
         ]
         return [
-            { key: "protocol", sortId: "protocol", label: qsTrId("synapse.monitor.column.protocol"), width: 110 },
+            { key: "protocol", sortId: "protocol", label: qsTrId("synapse.monitor.column.protocol"), width: 130 },
             { key: "local", sortId: "local", label: qsTrId("synapse.monitor.column.local"), width: 230 },
             { key: "remote", sortId: "remote", label: qsTrId("synapse.monitor.column.remote"), width: 230 },
             { key: "state", sortId: "status", label: qsTrId("synapse.monitor.column.state"), width: 130 },
