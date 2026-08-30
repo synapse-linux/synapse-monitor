@@ -85,7 +85,7 @@ TestCase {
         popup.selectedTokens = [tokenA]
         const apply = findChild(popup, "column-filter-apply-name")
         verify(apply !== null)
-        mouseClick(apply, apply.width / 2, apply.height / 2, Qt.LeftButton)
+        apply.clicked()
         tryCompare(popup, "visible", false)
         compare(controller.appliedColumn, "name")
         compare(controller.appliedTokens.length, 1)
