@@ -2,12 +2,13 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 
 Rectangle {
     id: root
     property var tableModel
     property var columnDefinitions: []
+    property var sortableIds: []
+    property string activeSortId: ""
     property color surfaceColor: "#24283b"
     property color alternateColor: "#202435"
     property color hoverColor: "#292e42"
@@ -17,6 +18,21 @@ Rectangle {
     property color accentColor: "#7aa2f7"
     property int rowHeight: 42
     signal rowActivated(var record)
+    signal sortRequested(string sortId)
+
+    function columnSortId(definition) {
+        return String(definition.sortId || definition.key || "")
+    }
+
+    function isSortable(definition) {
+        return sortableIds.indexOf(columnSortId(definition)) >= 0
+    }
+
+    function requestSort(definition) {
+        const identifier = columnSortId(definition)
+        if (sortableIds.indexOf(identifier) >= 0)
+            sortRequested(identifier)
+    }
 
     function totalWidth() {
         let result = 0
@@ -82,21 +98,70 @@ Rectangle {
                         delegate: Item {
                             id: headerCell
                             required property var modelData
+                            property string sortId: root.columnSortId(headerCell.modelData)
+                            property bool sortable: root.isSortable(headerCell.modelData)
+                            property bool selected: headerCell.sortable
+                                                    && root.activeSortId === headerCell.sortId
                             width: Number(headerCell.modelData.width || 120)
                             height: parent.height
+                            activeFocusOnTab: headerCell.sortable
+                            Accessible.role: headerCell.sortable
+                                             ? Accessible.Button : Accessible.StaticText
+                            Accessible.name: String(headerCell.modelData.label
+                                                    || headerCell.modelData.key)
+                            Accessible.description: headerCell.sortable
+                                                    ? qsTrId("synapse.monitor.accessibility.sort-column") : ""
+                            Keys.onReturnPressed: root.requestSort(headerCell.modelData)
+                            Keys.onSpacePressed: root.requestSort(headerCell.modelData)
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: headerCell.selected
+                                       ? Qt.rgba(root.accentColor.r, root.accentColor.g,
+                                                 root.accentColor.b, 0.12)
+                                       : (headerMouse.containsMouse
+                                          ? root.hoverColor : "transparent")
+                            }
                             Label {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 12
-                                anchors.right: parent.right
-                                anchors.rightMargin: 8
+                                anchors.right: sortIndicator.left
+                                anchors.rightMargin: 6
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: headerCell.modelData.label || headerCell.modelData.key
-                                color: root.mutedColor
+                                color: headerCell.selected ? root.accentColor : root.mutedColor
                                 font.pixelSize: 11
                                 font.weight: Font.DemiBold
                                 elide: Text.ElideRight
                                 horizontalAlignment: headerCell.modelData.align === "right"
                                                      ? Text.AlignRight : Text.AlignLeft
+                            }
+                            Label {
+                                id: sortIndicator
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: headerCell.sortable
+                                text: headerCell.selected
+                                      ? (headerCell.modelData.descending ? "↓" : "↑") : "↕"
+                                color: headerCell.selected ? root.accentColor : root.mutedColor
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                            }
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: headerCell.selected ? 2 : 1
+                                color: headerCell.selected ? root.accentColor : root.borderColor
+                            }
+                            MouseArea {
+                                id: headerMouse
+                                anchors.fill: parent
+                                enabled: headerCell.sortable
+                                hoverEnabled: headerCell.sortable
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.requestSort(headerCell.modelData)
                             }
                         }
                     }

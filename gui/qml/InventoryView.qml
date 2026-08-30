@@ -19,29 +19,29 @@ Item {
 
     function columns() {
         if (viewId === "services") return [
-            { key: "name", label: qsTrId("synapse.monitor.column.name"), width: 230 },
-            { key: "description", label: qsTrId("synapse.monitor.column.description"), width: 300 },
-            { key: "status", label: qsTrId("synapse.monitor.column.status"), width: 110 },
-            { key: "startup", label: qsTrId("synapse.monitor.column.startup"), width: 110 },
-            { key: "pid", label: "PID", width: 82, align: "right", format: "pid" },
-            { key: "user", label: qsTrId("synapse.monitor.column.user"), width: 110 },
-            { key: "executable", label: qsTrId("synapse.monitor.column.executable"), width: 220 }
+            { key: "name", sortId: "name", label: qsTrId("synapse.monitor.column.name"), width: 230 },
+            { key: "description", sortId: "description", label: qsTrId("synapse.monitor.column.description"), width: 300 },
+            { key: "status", sortId: "status", label: qsTrId("synapse.monitor.column.status"), width: 110 },
+            { key: "startup", sortId: "startup", label: qsTrId("synapse.monitor.column.startup"), width: 110 },
+            { key: "pid", sortId: "pid", label: "PID", width: 82, align: "right", format: "pid" },
+            { key: "user", sortId: "user", label: qsTrId("synapse.monitor.column.user"), width: 110 },
+            { key: "executable", sortId: "executable", label: qsTrId("synapse.monitor.column.executable"), width: 220 }
         ]
         if (viewId === "startup") return [
-            { key: "name", label: qsTrId("synapse.monitor.column.name"), width: 230 },
-            { key: "publisher", label: qsTrId("synapse.monitor.column.publisher"), width: 180 },
-            { key: "status", label: qsTrId("synapse.monitor.column.status"), width: 110 },
-            { key: "type", label: qsTrId("synapse.monitor.column.type"), width: 100 },
-            { key: "location", label: qsTrId("synapse.monitor.column.location"), width: 180 },
-            { key: "command", label: qsTrId("synapse.monitor.column.command"), width: 280 }
+            { key: "name", sortId: "name", label: qsTrId("synapse.monitor.column.name"), width: 230 },
+            { key: "publisher", sortId: "publisher", label: qsTrId("synapse.monitor.column.publisher"), width: 180 },
+            { key: "status", sortId: "status", label: qsTrId("synapse.monitor.column.status"), width: 110 },
+            { key: "type", sortId: "type", label: qsTrId("synapse.monitor.column.type"), width: 100 },
+            { key: "location", sortId: "location", label: qsTrId("synapse.monitor.column.location"), width: 180 },
+            { key: "command", sortId: "command", label: qsTrId("synapse.monitor.column.command"), width: 280 }
         ]
         return [
-            { key: "protocol", label: qsTrId("synapse.monitor.column.protocol"), width: 90 },
-            { key: "local", label: qsTrId("synapse.monitor.column.local"), width: 230 },
-            { key: "remote", label: qsTrId("synapse.monitor.column.remote"), width: 230 },
-            { key: "state", label: qsTrId("synapse.monitor.column.state"), width: 130 },
-            { key: "pid", label: "PID", width: 82, align: "right", format: "pid" },
-            { key: "process", label: qsTrId("synapse.monitor.column.process"), width: 180 }
+            { key: "protocol", sortId: "protocol", label: qsTrId("synapse.monitor.column.protocol"), width: 110 },
+            { key: "local", sortId: "local", label: qsTrId("synapse.monitor.column.local"), width: 230 },
+            { key: "remote", sortId: "remote", label: qsTrId("synapse.monitor.column.remote"), width: 230 },
+            { key: "state", sortId: "status", label: qsTrId("synapse.monitor.column.state"), width: 130 },
+            { key: "pid", sortId: "pid", label: "PID", width: 82, align: "right", format: "pid" },
+            { key: "process", sortId: "process", label: qsTrId("synapse.monitor.column.process"), width: 180 }
         ]
     }
 
@@ -128,9 +128,12 @@ Item {
             Layout.fillHeight: true
             tableModel: root.adapter.rows
             columnDefinitions: root.columns()
+            sortableIds: root.adapter.sortIds
+            activeSortId: root.adapter.sortId
             surfaceColor: root.surfaceColor; alternateColor: root.alternateColor
             hoverColor: root.hoverColor; borderColor: root.borderColor
             textColor: root.textColor; mutedColor: root.mutedColor; accentColor: root.accentColor
+            onSortRequested: function(sortId) { root.adapter.setSortId(sortId) }
         }
 
         Label {

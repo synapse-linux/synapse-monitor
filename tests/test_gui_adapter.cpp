@@ -90,7 +90,33 @@ private slots:
         QCOMPARE(contract.views.value(QStringLiteral("performance")).schema,
                  QStringLiteral("synapse.monitor.performance/v2"));
         QVERIFY(contract.views.value(QStringLiteral("processes")).filterSupported);
+        QCOMPARE(contract.views.value(QStringLiteral("processes")).sortIds,
+                 QStringList({QStringLiteral("cpu"), QStringLiteral("memory"),
+                              QStringLiteral("read"), QStringLiteral("write"),
+                              QStringLiteral("name"), QStringLiteral("class"),
+                              QStringLiteral("pid"), QStringLiteral("user"),
+                              QStringLiteral("state"), QStringLiteral("threads")}));
+        QVERIFY(contract.views.value(QStringLiteral("startup")).sortIds
+                    .contains(QStringLiteral("location")));
         QVERIFY(!contract.views.value(QStringLiteral("information")).filterSupported);
+    }
+
+    void undeclaredSortIdentifierFailsClosed() {
+        QJsonObject object = QJsonDocument::fromJson(
+            run({QStringLiteral("describe"), QStringLiteral("--format"),
+                 QStringLiteral("json")})).object();
+        QJsonArray views = object.value(QStringLiteral("views")).toArray();
+        QJsonObject processes = views.at(0).toObject();
+        QJsonArray sorts = processes.value(QStringLiteral("sort")).toArray();
+        sorts.append(QStringLiteral("unreviewed"));
+        processes.insert(QStringLiteral("sort"), sorts);
+        views.replace(0, processes);
+        object.insert(QStringLiteral("views"), views);
+        MonitorPresentationContract contract;
+        QString error;
+        QVERIFY(!MonitorContracts::decodePresentation(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), &contract, &error));
+        QCOMPARE(error, QStringLiteral("presentation-invalid"));
     }
 
     void eachViewAcceptsOneExactFrame() {
@@ -281,6 +307,29 @@ private slots:
                                   5000);
         QVERIFY(!adapter.streaming());
         QVERIFY(!adapter.ready());
+    }
+
+    void displayedHeaderSortsReachTheCoreContract() {
+        MonitorAdapter adapter(core());
+        QSignalSpy accepted(&adapter, &MonitorAdapter::frameAccepted);
+        QVERIFY(adapter.initialize(QStringLiteral("processes")));
+        QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
+        QCOMPARE(adapter.sortIds().size(), 10);
+        accepted.clear();
+        QVERIFY(adapter.setSortId(QStringLiteral("class")));
+        QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
+        QCOMPARE(adapter.payload().value(QStringLiteral("selection")).toMap()
+                     .value(QStringLiteral("sort")).toString(),
+                 QStringLiteral("class"));
+        accepted.clear();
+        QVERIFY(adapter.selectView(QStringLiteral("startup")));
+        QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
+        accepted.clear();
+        QVERIFY(adapter.setSortId(QStringLiteral("location")));
+        QTRY_VERIFY_WITH_TIMEOUT(accepted.count() > 0, 5000);
+        QCOMPARE(adapter.payload().value(QStringLiteral("selection")).toMap()
+                     .value(QStringLiteral("sort")).toString(),
+                 QStringLiteral("location"));
     }
 
     void liveAdapterOwnsAndStopsItsChild() {

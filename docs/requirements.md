@@ -1,4 +1,4 @@
-# Alpha 5 requirements
+# Alpha 6 requirements
 
 ## Functional views
 
@@ -38,6 +38,8 @@
 - `MON-049`: render complete GPU, thermal, fan, disk and network availability without converting null to zero; chart nulls remain gaps.
 - `MON-050`: translate reviewed identifiers in QML and request generic global `monospace` without coupling the font family to color themes.
 - `MON-051`: omit zero-inode transient connection rows from graphical identity sets and report an explicit `identityUnavailable` coverage count.
+- `MON-056`: make every visible process, service, startup and connection column sortable from its header through an exact native allowlist, with an active natural-order indicator.
+- `MON-057`: observe host connection tables from the host network namespace while denying IPv4/IPv6 socket authority in the graphical sandbox.
 
 ## Safety and privacy
 

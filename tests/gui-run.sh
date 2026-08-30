@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.5' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.6' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -55,6 +55,26 @@ for path in sys.argv[1:]:
  assert len(ids)==len(set(ids)) and len(ids)>=90
  sets.append(set(ids))
 assert sets[0]==sets[1]
+PY
+
+python3 - "$repo/gui/qml/DataTable.qml" "$repo/gui/qml/ProcessesView.qml" \
+  "$repo/gui/qml/InventoryView.qml" <<'PY'
+import pathlib,sys
+header=pathlib.Path(sys.argv[1]).read_text()
+assert 'signal sortRequested(string sortId)' in header
+assert 'onClicked: root.requestSort(headerCell.modelData)' in header
+assert 'Keys.onReturnPressed: root.requestSort(headerCell.modelData)' in header
+assert 'root.activeSortId === headerCell.sortId' in header
+for path in sys.argv[2:]:
+ text=pathlib.Path(path).read_text()
+ definitions=[line for line in text.splitlines() if '{ key:' in line]
+ assert definitions and all('sortId:' in line for line in definitions), path
+ assert 'sortableIds: root.adapter.sortIds' in text
+ assert 'activeSortId: root.adapter.sortId' in text
+ assert 'onSortRequested:' in text
+assert 'key: "uid", sortId: "user"' in pathlib.Path(sys.argv[2]).read_text()
+assert 'key: "state", sortId: "status"' in pathlib.Path(sys.argv[3]).read_text()
+assert 'key: "location", sortId: "location"' in pathlib.Path(sys.argv[3]).read_text()
 PY
 
 ! grep -R -n -E '(/usr/bin|/usr/local|QProcess|subprocess|Process\s*\{|argv|system\(|popen\(|shell)' \

@@ -63,6 +63,10 @@
       <source>synapse.monitor.action.sort</source>
       <translation>Ordina</translation>
     </message>
+    <message id="synapse.monitor.accessibility.sort-column">
+      <source>synapse.monitor.accessibility.sort-column</source>
+      <translation>Ordina per questa colonna</translation>
+    </message>
     <message id="synapse.monitor.action.group">
       <source>synapse.monitor.action.group</source>
       <translation>Raggruppa</translation>

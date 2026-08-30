@@ -1,6 +1,6 @@
 # Graphical presentation contracts
 
-The Alpha 5 graphical shell is a separate, presentation-only consumer. The C17
+The Alpha 6 graphical shell is a separate, presentation-only consumer. The C17
 core owns observation, filtering, ordering, bounds, privacy and exact-major wire
 contracts. The native Qt adapter owns transport validation and typed models. QML
 owns layout, generic typography, color, charts, animation, translated labels and
@@ -76,8 +76,11 @@ The native GUI adapter, not QML, owns executable discovery, process lifetime and
 fixed argv. Normal discovery uses only the sibling or installed core. An absolute
 backend override is rejected unless explicit test authority is present and is
 never exposed to QML. QML may request typed view IDs, reviewed sort/group/column
-IDs, bounded filter text and presentation preferences through native methods. It must
-not concatenate a command, construct argv, choose an executable or path, invoke
+IDs, bounded filter text and presentation preferences through native methods.
+Every visible table header maps to one declared sort ID and exposes the active
+natural ordering indicator. The adapter rejects any identifier outside the exact
+per-view allowlist before replacing the child stream. QML must not concatenate a
+command, construct argv, choose an executable or path, invoke
 a shell, or receive stderr as display data.
 
 The adapter must:
@@ -93,7 +96,7 @@ The adapter must:
 9. stop and surface a bounded generic error if framing or schema validation fails;
 10. terminate its child stream on GUI shutdown or view replacement.
 
-Alpha 5 implements these checks before publishing any frame to QML. It also
+Alpha 6 implements these checks before publishing any frame to QML. It also
 bounds stderr to 32 KiB and capability/inspection documents to 256 KiB. Zero
 socket inodes are reported as unavailable identity coverage and never enter the
 connection row model.

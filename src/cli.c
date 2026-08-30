@@ -55,6 +55,8 @@ int mon_parse_sort(const char *value, mon_sort *sort) {
     else if (strcmp(value, "publisher") == 0) *sort = MON_SORT_PUBLISHER;
     else if (strcmp(value, "command") == 0) *sort = MON_SORT_COMMAND;
     else if (strcmp(value, "process") == 0) *sort = MON_SORT_PROCESS;
+    else if (strcmp(value, "class") == 0) *sort = MON_SORT_CLASS;
+    else if (strcmp(value, "location") == 0) *sort = MON_SORT_LOCATION;
     else return -1;
     return 0;
 }
@@ -278,6 +280,8 @@ const char *mon_sort_id(mon_sort sort) {
         case MON_SORT_PUBLISHER: return "publisher";
         case MON_SORT_COMMAND: return "command";
         case MON_SORT_PROCESS: return "process";
+        case MON_SORT_CLASS: return "class";
+        case MON_SORT_LOCATION: return "location";
         case MON_SORT_CPU:
         default: return "cpu";
     }

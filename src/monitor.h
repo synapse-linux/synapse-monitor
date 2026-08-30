@@ -139,7 +139,9 @@ typedef enum {
     MON_SORT_EXECUTABLE,
     MON_SORT_PUBLISHER,
     MON_SORT_COMMAND,
-    MON_SORT_PROCESS
+    MON_SORT_PROCESS,
+    MON_SORT_CLASS,
+    MON_SORT_LOCATION
 } mon_sort;
 
 typedef enum {

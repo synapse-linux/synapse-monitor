@@ -4,7 +4,7 @@ Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
 Its C17 core provides a dense terminal interface and versioned JSON contracts
 without requiring a graphical session.
 
-Alpha 5 adds a first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
+Alpha 6 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts: every visible table column now sorts from its header through an exact native allowlist, and guarded previews retain the host connection tables while denying IPv4/IPv6 socket authority. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
 
 1. **Processes** — bounded application, system and kernel groups with CPU,
    memory, I/O, state, thread, PID and user observations.

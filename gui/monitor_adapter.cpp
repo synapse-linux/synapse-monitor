@@ -316,6 +316,62 @@ bool decodePresentation(const QByteArray &payload, MonitorPresentationContract *
         {QStringLiteral("startup"), QStringLiteral("synapse.monitor.startup/v1")},
         {QStringLiteral("connections"), QStringLiteral("synapse.monitor.connections/v1")},
         {QStringLiteral("information"), QStringLiteral("synapse.monitor.information/v1")}};
+    const QHash<QString, QStringList> expectedSorts = {
+        {QStringLiteral("processes"), {QStringLiteral("cpu"), QStringLiteral("memory"),
+                                        QStringLiteral("read"), QStringLiteral("write"),
+                                        QStringLiteral("name"), QStringLiteral("class"),
+                                        QStringLiteral("pid"), QStringLiteral("user"),
+                                        QStringLiteral("state"), QStringLiteral("threads")}},
+        {QStringLiteral("performance"), {}},
+        {QStringLiteral("services"), {QStringLiteral("name"),
+                                       QStringLiteral("description"),
+                                       QStringLiteral("status"), QStringLiteral("startup"),
+                                       QStringLiteral("pid"), QStringLiteral("user"),
+                                       QStringLiteral("executable")}},
+        {QStringLiteral("startup"), {QStringLiteral("name"),
+                                      QStringLiteral("publisher"),
+                                      QStringLiteral("status"), QStringLiteral("type"),
+                                      QStringLiteral("scope"), QStringLiteral("location"),
+                                      QStringLiteral("command")}},
+        {QStringLiteral("connections"), {QStringLiteral("protocol"),
+                                          QStringLiteral("local"),
+                                          QStringLiteral("remote"),
+                                          QStringLiteral("status"),
+                                          QStringLiteral("pid"),
+                                          QStringLiteral("process")}},
+        {QStringLiteral("information"), {}}};
+    const QHash<QString, QStringList> expectedGroups = {
+        {QStringLiteral("processes"), {QStringLiteral("class"),
+                                        QStringLiteral("name"),
+                                        QStringLiteral("none")}},
+        {QStringLiteral("performance"), {}}, {QStringLiteral("services"), {}},
+        {QStringLiteral("startup"), {}}, {QStringLiteral("connections"), {}},
+        {QStringLiteral("information"), {}}};
+    const QHash<QString, QStringList> expectedColumns = {
+        {QStringLiteral("processes"), {QStringLiteral("name"),
+                                        QStringLiteral("class"),
+                                        QStringLiteral("pid"), QStringLiteral("uid"),
+                                        QStringLiteral("state"), QStringLiteral("threads"),
+                                        QStringLiteral("cpu"), QStringLiteral("memory"),
+                                        QStringLiteral("read"), QStringLiteral("write")}},
+        {QStringLiteral("performance"), {}},
+        {QStringLiteral("services"), {QStringLiteral("name"),
+                                       QStringLiteral("description"),
+                                       QStringLiteral("status"),
+                                       QStringLiteral("startup"), QStringLiteral("pid"),
+                                       QStringLiteral("user"),
+                                       QStringLiteral("executable")}},
+        {QStringLiteral("startup"), {QStringLiteral("name"),
+                                      QStringLiteral("publisher"),
+                                      QStringLiteral("status"), QStringLiteral("type"),
+                                      QStringLiteral("location"),
+                                      QStringLiteral("command")}},
+        {QStringLiteral("connections"), {QStringLiteral("protocol"),
+                                          QStringLiteral("local"),
+                                          QStringLiteral("remote"),
+                                          QStringLiteral("state"), QStringLiteral("pid"),
+                                          QStringLiteral("process")}},
+        {QStringLiteral("information"), {}}};
     const QHash<QString, QStringList> expectedIdentities = {
         {QStringLiteral("processes"), {QStringLiteral("pid"), QStringLiteral("startTicks")}},
         {QStringLiteral("performance"), {QStringLiteral("cpu.index"),
@@ -351,8 +407,11 @@ bool decodePresentation(const QByteArray &payload, MonitorPresentationContract *
         capability.schema = expectedSchemas.value(id);
         QStringList rowIdentity;
         if (!stringArray(view.value(QStringLiteral("sort")), &capability.sortIds)
+            || capability.sortIds != expectedSorts.value(id)
             || !stringArray(view.value(QStringLiteral("group")), &capability.groupIds)
+            || capability.groupIds != expectedGroups.value(id)
             || !stringArray(view.value(QStringLiteral("columns")), &capability.columnIds)
+            || capability.columnIds != expectedColumns.value(id)
             || !stringArray(view.value(QStringLiteral("rowIdentity")), &rowIdentity)
             || rowIdentity != expectedIdentities.value(id)
             || !view.value(QStringLiteral("filter")).isObject())

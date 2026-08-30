@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0-alpha.6
+
+- Make every visible Processes, Services, Startup Apps and Connections column clickable and sortable through exact native per-view allowlists.
+- Show inactive and active natural-order indicators and support keyboard activation on sortable headers.
+- Add reviewed `class` and `location` core sort identifiers so displayed columns never require local QML sorting.
+- Validate exact sort, group and column identifier sets before publishing capabilities to QML.
+- Correct the guarded preview policy: retain the host network namespace for `/proc/net` observation while denying IPv4/IPv6 socket families and all IP traffic.
+- Preserve fixed argv, bounded streams, stable identities, read-only authority and the Alpha 5 graphical layout.
+
 ## 0.5.0-alpha.5
 
 - Add the native `synapse-monitor-gui` adapter and responsive QML presentation for all six read-only views.

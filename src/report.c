@@ -372,6 +372,12 @@ static int compare_metric(const mon_process *left, const mon_process *right) {
             if (compared != 0) return compared;
             break;
         }
+        case MON_SORT_CLASS: {
+            int compared = strcmp(mon_class_id(left->process_class),
+                                  mon_class_id(right->process_class));
+            if (compared != 0) return compared;
+            break;
+        }
         case MON_SORT_USER:
             if (left->uid_available != right->uid_available)
                 return left->uid_available ? -1 : 1;

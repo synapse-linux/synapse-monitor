@@ -15,7 +15,7 @@ static bool sort_valid(mon_view view, mon_sort sort) {
                 || sort == MON_SORT_READ || sort == MON_SORT_WRITE
                 || sort == MON_SORT_NAME || sort == MON_SORT_PID
                 || sort == MON_SORT_USER || sort == MON_SORT_STATE
-                || sort == MON_SORT_THREADS;
+                || sort == MON_SORT_THREADS || sort == MON_SORT_CLASS;
         case MON_VIEW_SERVICES:
             return sort == MON_SORT_NAME || sort == MON_SORT_STATUS
                 || sort == MON_SORT_STARTUP || sort == MON_SORT_PID
@@ -24,7 +24,8 @@ static bool sort_valid(mon_view view, mon_sort sort) {
         case MON_VIEW_STARTUP:
             return sort == MON_SORT_NAME || sort == MON_SORT_STATUS
                 || sort == MON_SORT_SCOPE || sort == MON_SORT_TYPE
-                || sort == MON_SORT_PUBLISHER || sort == MON_SORT_COMMAND;
+                || sort == MON_SORT_PUBLISHER || sort == MON_SORT_COMMAND
+                || sort == MON_SORT_LOCATION;
         case MON_VIEW_CONNECTIONS:
             return sort == MON_SORT_PROTOCOL || sort == MON_SORT_LOCAL
                 || sort == MON_SORT_REMOTE || sort == MON_SORT_STATUS

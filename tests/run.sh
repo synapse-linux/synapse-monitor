@@ -4,7 +4,7 @@ set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
 repo=$(cd "$(dirname "$0")/.." && pwd)
-[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.5' ]]
+[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.6' ]]
 $binary --help | grep -Fq 'The command is read-only'
 $binary describe --format json >"${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
 python3 - "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json" \
@@ -14,7 +14,7 @@ x=json.load(open(sys.argv[1]));schema=json.load(open(sys.argv[2]))
 assert schema['$schema']=='https://json-schema.org/draft/2020-12/schema'
 assert schema['properties']['schema']['const']=='synapse.monitor.presentation/v1'
 assert x['schema']=='synapse.monitor.presentation/v1' and x['readOnly'] is True
-assert x['producer']['version']=='0.5.0-alpha.5'
+assert x['producer']['version']=='0.5.0-alpha.6'
 assert [v['id'] for v in x['views']]==['processes','performance','services','startup','connections','information']
 assert [v['ordinal'] for v in x['views']]==[1,2,3,4,5,6]
 assert x['formats']['stream']['mediaType']=='application/x-ndjson'
@@ -426,16 +426,31 @@ assert all(r['socketInode']>0 for r in x['rows'])
 assert x['semantics']['socketOpened'] is False and x['semantics']['connectionControl'] is False
 PY
 
-# Every visible inventory column has a reviewed sorting path.
+# Every visible table column has a reviewed sorting path.
+for sort in name class pid user state threads cpu memory read write; do
+  $binary snapshot --view processes --sort "$sort" --group none \
+    --sample-ms 100 --limit 2 >/dev/null
+done
 for sort in name description status startup pid user executable; do
   $binary snapshot --view services --sort "$sort" --limit 2 >/dev/null
 done
-for sort in name publisher status type scope command; do
+for sort in name publisher status type scope location command; do
   $binary snapshot --view startup --sort "$sort" --limit 2 >/dev/null
 done
 for sort in protocol local remote status pid process; do
   $binary snapshot --view connections --sort "$sort" --limit 2 >/dev/null
 done
+$binary snapshot --view processes --format json --sort class --group none \
+  --sample-ms 100 --limit 8 >"$work/processes-class-sort.json"
+$binary snapshot --view startup --format json --sort location --limit 8 \
+  >"$work/startup-location-sort.json"
+python3 - "$work/processes-class-sort.json" "$work/startup-location-sort.json" <<'PY'
+import json,sys
+processes=json.load(open(sys.argv[1]))['rows']
+startup=json.load(open(sys.argv[2]))['rows']
+assert [r['class'] for r in processes] == sorted(r['class'] for r in processes)
+assert [r['location'] for r in startup] == sorted(r['location'] for r in startup)
+PY
 
 # System information excludes host names and serial numbers.
 $binary snapshot --view information --format json >"$work/information.json"

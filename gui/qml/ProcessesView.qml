@@ -41,16 +41,16 @@ Item {
     }
     function columns() {
         return [
-            { key: "name", label: qsTrId("synapse.monitor.column.name"), width: 220 },
-            { key: "class", label: qsTrId("synapse.monitor.column.class"), width: 110 },
-            { key: "pid", label: "PID", width: 84, align: "right", format: "pid" },
-            { key: "uid", label: "UID", width: 76, align: "right", format: "integer" },
-            { key: "state", label: qsTrId("synapse.monitor.column.state"), width: 82 },
-            { key: "threads", label: qsTrId("synapse.monitor.column.threads"), width: 84, align: "right", format: "integer" },
-            { key: "cpuPercentMilli", label: "CPU", width: 92, align: "right", format: "percent" },
-            { key: "residentBytes", label: qsTrId("synapse.monitor.column.memory"), width: 110, align: "right", format: "bytes" },
-            { key: "readBytesPerSecond", label: qsTrId("synapse.monitor.column.read"), width: 110, align: "right", format: "rate" },
-            { key: "writeBytesPerSecond", label: qsTrId("synapse.monitor.column.write"), width: 110, align: "right", format: "rate" }
+            { key: "name", sortId: "name", label: qsTrId("synapse.monitor.column.name"), width: 220 },
+            { key: "class", sortId: "class", label: qsTrId("synapse.monitor.column.class"), width: 110 },
+            { key: "pid", sortId: "pid", label: "PID", width: 84, align: "right", format: "pid" },
+            { key: "uid", sortId: "user", label: "UID", width: 76, align: "right", format: "integer" },
+            { key: "state", sortId: "state", label: qsTrId("synapse.monitor.column.state"), width: 82 },
+            { key: "threads", sortId: "threads", descending: true, label: qsTrId("synapse.monitor.column.threads"), width: 84, align: "right", format: "integer" },
+            { key: "cpuPercentMilli", sortId: "cpu", descending: true, label: "CPU", width: 92, align: "right", format: "percent" },
+            { key: "residentBytes", sortId: "memory", descending: true, label: qsTrId("synapse.monitor.column.memory"), width: 110, align: "right", format: "bytes" },
+            { key: "readBytesPerSecond", sortId: "read", descending: true, label: qsTrId("synapse.monitor.column.read"), width: 110, align: "right", format: "rate" },
+            { key: "writeBytesPerSecond", sortId: "write", descending: true, label: qsTrId("synapse.monitor.column.write"), width: 110, align: "right", format: "rate" }
         ]
     }
 
@@ -193,9 +193,12 @@ Item {
                 Layout.minimumWidth: 360
                 tableModel: root.adapter.rows
                 columnDefinitions: root.columns()
+                sortableIds: root.adapter.sortIds
+                activeSortId: root.adapter.sortId
                 surfaceColor: root.surfaceColor; alternateColor: root.alternateColor
                 hoverColor: root.hoverColor; borderColor: root.borderColor
                 textColor: root.textColor; mutedColor: root.mutedColor; accentColor: root.accentColor
+                onSortRequested: function(sortId) { root.adapter.setSortId(sortId) }
                 onRowActivated: function(record) {
                     root.adapter.inspectProcess(Number(record.pid), Number(record.startTicks))
                 }

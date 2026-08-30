@@ -691,6 +691,8 @@ static int compare_startup(const void *left_value, const void *right_value) {
         compared = strcmp(left->publisher, right->publisher);
     else if (startup_sort == MON_SORT_COMMAND)
         compared = strcmp(left->command, right->command);
+    else if (startup_sort == MON_SORT_LOCATION)
+        compared = strcmp(left->location, right->location);
     else compared = strcmp(left->name, right->name);
     return compared != 0 ? compared : strcmp(left->id, right->id);
 }
