@@ -152,9 +152,9 @@ Rectangle {
                                 anchors.right: filterButton.left
                                 anchors.rightMargin: 2
                                 anchors.verticalCenter: parent.verticalCenter
-                                visible: headerCell.sortable
-                                text: headerCell.selected
-                                      ? (root.sortAscending ? "↑" : "↓") : "↕"
+                                visible: headerCell.selected
+                                width: headerCell.selected ? implicitWidth : 0
+                                text: root.sortAscending ? "↑" : "↓"
                                 color: headerCell.selected ? root.accentColor : root.mutedColor
                                 font.pixelSize: 11
                                 font.weight: Font.DemiBold
