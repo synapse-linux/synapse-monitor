@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0-alpha.4
+
+- Record physical acceptance that all required informational elements are present while retaining the terminal view as a deliberately rough diagnostic surface.
+- Add `synapse.monitor.presentation/v1` capability discovery for a separate graphical shell.
+- Add bounded full-frame `application/x-ndjson` streaming for every view with `synapse.monitor.stream-frame/v1` sequence metadata.
+- Preserve at most 60 oldest-first chart samples and encode unavailable history as `null`, distinct from measured zero.
+- Add process PID/start-tick and connection socket-inode row identities for deterministic graphical reconciliation.
+- Add machine-readable schemas and the native-adapter/QML authority boundary.
+- Preserve all read-only, privacy, no-socket, no-listener and no-telemetry constraints.
+
 ## 0.3.0-alpha.3
 
 - Correct Alpha 2's missing GPU-parameter and thermal coverage.

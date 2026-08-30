@@ -31,6 +31,7 @@
 #define MON_MAX_MODULES 512U
 #define MON_MAX_FD_LINKS 131072U
 #define MON_HISTORY_SAMPLES 60U
+#define MON_STREAM_LINE_MAX ((size_t)2U * 1024U * 1024U)
 #define MON_STAT_FILE_LIMIT ((size_t)64U * 1024U)
 #define MON_PROCESS_FILE_LIMIT ((size_t)32U * 1024U)
 #define MON_UNIT_FILE_LIMIT ((size_t)64U * 1024U)
@@ -91,7 +92,8 @@
 
 typedef enum {
     MON_FORMAT_TEXT = 0,
-    MON_FORMAT_JSON
+    MON_FORMAT_JSON,
+    MON_FORMAT_NDJSON
 } mon_format;
 
 typedef enum {
@@ -387,6 +389,11 @@ typedef struct {
     uint64_t gpu[MON_HISTORY_SAMPLES];
     uint64_t disk[MON_HISTORY_SAMPLES];
     uint64_t network[MON_HISTORY_SAMPLES];
+    bool cpu_available[MON_HISTORY_SAMPLES];
+    bool memory_available[MON_HISTORY_SAMPLES];
+    bool gpu_available[MON_HISTORY_SAMPLES];
+    bool disk_available[MON_HISTORY_SAMPLES];
+    bool network_available[MON_HISTORY_SAMPLES];
     size_t count;
     size_t next;
 } mon_history;
@@ -515,6 +522,8 @@ typedef struct {
     uint64_t interval_milliseconds;
     uint64_t iterations;
     bool interactive_output;
+    bool stream_output;
+    uint64_t stream_sequence;
     const mon_history *history;
 } mon_options;
 
@@ -585,7 +594,10 @@ int mon_render_process_inspection(const mon_process_inspection *inspection,
                                   mon_format format);
 int mon_render_information(const mon_information *information,
                            const mon_options *options);
+int mon_render_presentation(void);
+void mon_render_stream_metadata(const mon_options *options);
 void mon_usage(FILE *output);
 int mon_run_watch(const mon_roots *roots, mon_options *options);
+int mon_run_stream(const mon_roots *roots, mon_options *options);
 
 #endif

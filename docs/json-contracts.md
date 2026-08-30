@@ -4,6 +4,24 @@ Machine output is locale-neutral, contains one object, and ends with one newline
 Consumers must reject unknown schema majors. Every contract carries constant
 `readOnly: true` and explicit coverage/truncation where rows are bounded.
 
+## `synapse.monitor.presentation/v1`
+
+`describe --format json` returns the locale-neutral GUI capability catalogue:
+producer version, snapshot and stream framing, all ordered view/schema IDs,
+closed sort/group/column sets, stable row identities, sampling bounds, units,
+null/history semantics and explicit read-only/privacy authority. Human labels
+and command templates are absent. Its machine-readable schema is
+`schemas/presentation-v1.schema.json`.
+
+## `synapse.monitor.stream-frame/v1`
+
+Every object produced by `stream --format ndjson` retains its normal view schema
+and adds a `stream` member containing this metadata schema, a zero-based strictly
+increasing sequence and the selected interval in milliseconds. Each line is a
+complete replacement frame capped by contract at 2 MiB. Errors remain on stderr
+and terminate the stream. The metadata schema is
+`schemas/stream-frame-v1.schema.json`.
+
 ## `synapse.monitor.snapshot/v1`
 
 The Processes contract contains:
@@ -13,8 +31,9 @@ The Processes contract contains:
 - scan denials, races, malformed rows and truncation coverage;
 - bounded PID/start-time-correlated process rows.
 
-Rows contain PID, nullable UID, sanitized name, fixed class, state, threads,
-resident bytes and nullable sampled CPU/I/O rates. They never contain commands,
+Rows contain PID plus boot-relative start ticks as stable identity, nullable
+UID, sanitized name, fixed class, state, threads, resident bytes and nullable
+sampled CPU/I/O rates. They never contain commands,
 environments, paths, open-file targets or mutation handles.
 
 ## `synapse.monitor.performance/v2`
@@ -33,7 +52,8 @@ The Performance contract contains:
 - bounded general fan rows and sensor denial/malformed/truncation coverage;
 - bounded per-physical-disk read/write rates;
 - bounded per-interface receive/transmit rates;
-- optional bounded history arrays, empty for a single snapshot;
+- optional bounded history arrays, empty for a single snapshot and oldest-first
+  in a stream; unavailable samples are `null` while measured zero is `0`;
 - observed/returned and truncation metadata.
 
 Units are fixed: milli-percent, bytes, hertz, microwatts, RPM and
@@ -42,7 +62,7 @@ zeroes. A driver-reported VRAM window is not claimed to be physically dedicated
 memory. Integrated-GPU temperature is never inferred from CPU-package or thermal
 zone values.
 
-`performance/v1` remains a historical Alpha 2 contract; Alpha 3 emits v2.
+`performance/v1` remains a historical Alpha 2 contract; Alpha 3 and later emit v2.
 
 ## `synapse.monitor.services/v1`
 
@@ -61,8 +81,9 @@ false.
 
 ## `synapse.monitor.connections/v1`
 
-Each connection row contains fixed protocol, decoded local/remote endpoint,
-state, nullable owning PID and nullable sanitized process name. Coverage includes
+Each connection row contains fixed protocol, a local socket-inode row identity,
+decoded local/remote endpoint, state, nullable owning PID and nullable sanitized
+process name. Coverage includes
 kernel rows, malformed input, denials, descriptor observations and owner-scan
 truncation. The semantics declare `socketOpened: false` and
 `connectionControl: false`.

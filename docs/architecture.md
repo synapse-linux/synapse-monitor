@@ -10,7 +10,8 @@
 3. **Report** correlates identities, computes sampled rates, filters and sorts
    fixed typed records.
 4. **Presentation** renders deterministic `en_US` text, interactive terminal
-   frames or locale-neutral JSON.
+   frames, locale-neutral JSON, capability discovery or bounded NDJSON full
+   frames for a separate graphical adapter.
 
 No observed input becomes a command, path argument or process-control request.
 Filters are bounded printable-ASCII matches. Views, columns, grouping, sorting,
@@ -29,7 +30,9 @@ layout and theme come from closed identifier sets.
 - sample duration 100–2,000 ms and watch interval 250–10,000 ms;
 - fixed per-file limits from 4 KiB to 2 MiB, plus a 4 MiB streaming cap
   for optional `pci.ids` model lookup;
-- terminal performance history fixed to 60 samples.
+- terminal and graphical performance history fixed to 60 samples;
+- graphical stream frames fixed to at most 2 MiB with strictly increasing
+  sequence metadata and blocking backpressure.
 
 Test roots are disabled unless `SYNAPSE_MONITOR_ALLOW_TEST_ROOTS=1`. Every
 overridden root must be absolute and component-normalized.
@@ -50,6 +53,10 @@ provide utilization, driver-reported VRAM,
 temperature, current/maximum core clock, memory clock, average/input power,
 power cap and fan RPM. Every value has an independent availability flag; a
 VRAM window is not classified as physically dedicated memory.
+
+Unavailable history observations remain JSON `null` in graphical streams;
+measured zero is retained as numeric zero. Full stream frames replace prior
+view state and carry stable row identities, avoiding an unbounded patch queue.
 
 Temperature rows come from bounded `hwmon` channels with a bounded thermal-zone
 fallback and are classified as CPU package/core, GPU, storage, battery, system
@@ -95,8 +102,17 @@ full paths, descriptor targets, commands and environments are discarded.
 Only non-identifying OS, processor, model, memory, firmware and uptime fields are
 read. Host names, machine IDs and serial-number files are outside the contract.
 
+## Graphical boundary
+
+The core exposes `synapse.monitor.presentation/v1` capability discovery and
+one-view NDJSON streams. It exposes identifiers, units, availability and stable
+row identities but no command templates or visual styling. A native adapter
+owns fixed argv, child-process lifetime, framing and exact-major validation.
+QML owns only layout, translated labels, typography, color, animation and
+accessibility; it never constructs a command, argv or executable path.
+
 ## Authority
 
-Alpha 3 is inspection-only. There is deliberately no signal, kill, dump,
+Alpha 4 is inspection-only. There is deliberately no signal, kill, dump,
 priority, service/startup mutation, connection control, mount, cgroup mutation,
 privileged helper, subprocess execution, listener or telemetry interface.

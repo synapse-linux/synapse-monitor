@@ -300,6 +300,7 @@ static void render_available_u64(const char *name, bool available, uint64_t valu
 static int render_json(const mon_report *report, const mon_options *options) {
     size_t returned = rows_returned(report, options);
     fputs("{\"schema\":\"synapse.monitor.snapshot/v1\",\"readOnly\":true,\"view\":\"processes\"", stdout);
+    mon_render_stream_metadata(options);
     json_u64("sampledMilliseconds", report->sample_milliseconds, true);
     fputs(",\"selection\":{\"sort\":", stdout);
     json_string(mon_sort_id(options->sort));
@@ -372,7 +373,8 @@ static int render_json(const mon_report *report, const mon_options *options) {
     for (size_t i = 0U; i < returned; i++) {
         const mon_process *process = &report->processes.rows[i];
         if (i > 0U) fputc(',', stdout);
-        printf("{\"pid\":%d,\"uid\":", process->pid);
+        printf("{\"pid\":%d,\"startTicks\":%" PRIu64 ",\"uid\":",
+               process->pid, process->start_ticks);
         if (process->uid_available) printf("%u", process->uid);
         else fputs("null", stdout);
         fputs(",\"name\":", stdout);
@@ -405,19 +407,39 @@ static int render_json(const mon_report *report, const mon_options *options) {
     return ferror(stdout) ? 1 : 0;
 }
 
+static size_t history_index(const mon_history *history, size_t index) {
+    size_t start = history->count < MON_HISTORY_SAMPLES ? 0U : history->next;
+    return (start + index) % MON_HISTORY_SAMPLES;
+}
+
 static uint64_t history_at(const uint64_t values[MON_HISTORY_SAMPLES],
                            const mon_history *history, size_t index) {
-    size_t start = history->count < MON_HISTORY_SAMPLES ? 0U : history->next;
-    return values[(start + index) % MON_HISTORY_SAMPLES];
+    return values[history_index(history, index)];
+}
+
+static bool history_available_at(
+    const bool values[MON_HISTORY_SAMPLES], const mon_history *history,
+    size_t index) {
+    return values[history_index(history, index)];
+}
+
+static bool history_has_available(
+    const bool values[MON_HISTORY_SAMPLES], const mon_history *history) {
+    if (!history) return false;
+    for (size_t i = 0U; i < history->count; i++)
+        if (history_available_at(values, history, i)) return true;
+    return false;
 }
 
 static void render_history_line(const char *label,
                                 const uint64_t values[MON_HISTORY_SAMPLES],
+                                const bool available[MON_HISTORY_SAMPLES],
                                 const mon_history *history, uint64_t scale) {
     static const char levels[] = " .:-=+*#%@";
     if (!history || history->count == 0U) return;
     if (scale == 0U) {
         for (size_t i = 0U; i < history->count; i++) {
+            if (!history_available_at(available, history, i)) continue;
             uint64_t value = history_at(values, history, i);
             if (value > scale) scale = value;
         }
@@ -425,6 +447,10 @@ static void render_history_line(const char *label,
     if (scale == 0U) scale = 1U;
     printf("%-8s ", label);
     for (size_t i = 0U; i < history->count; i++) {
+        if (!history_available_at(available, history, i)) {
+            fputc(' ', stdout);
+            continue;
+        }
         uint64_t value = history_at(values, history, i);
         size_t level = value >= scale ? sizeof(levels) - 2U
             : (size_t)(value * (sizeof(levels) - 2U) / scale);
@@ -551,13 +577,23 @@ static int render_performance_text(const mon_report *report,
     render_summary_text(report);
     if (options->history && options->history->count > 0U) {
         fputs("\nHISTORY (oldest to newest)\n", stdout);
-        render_history_line("CPU", options->history->cpu, options->history, 100000U);
-        render_history_line("RAM", options->history->memory, options->history, 100000U);
-        if (report->gpu_available)
-            render_history_line("GPU", options->history->gpu, options->history,
-                                100000U);
-        render_history_line("DISK", options->history->disk, options->history, 0U);
-        render_history_line("NETWORK", options->history->network, options->history, 0U);
+        render_history_line("CPU", options->history->cpu,
+                            options->history->cpu_available, options->history,
+                            100000U);
+        render_history_line("RAM", options->history->memory,
+                            options->history->memory_available, options->history,
+                            100000U);
+        if (history_has_available(options->history->gpu_available,
+                                  options->history))
+            render_history_line("GPU", options->history->gpu,
+                                options->history->gpu_available,
+                                options->history, 100000U);
+        render_history_line("DISK", options->history->disk,
+                            options->history->disk_available, options->history,
+                            0U);
+        render_history_line("NETWORK", options->history->network,
+                            options->history->network_available, options->history,
+                            0U);
     }
     fputs("\nGRAPHICS PROCESSORS\n", stdout);
     if (report->gpu_count == 0U)
@@ -644,13 +680,16 @@ static int render_performance_text(const mon_report *report,
     return ferror(stdout) ? 1 : 0;
 }
 
-static void render_history_json_values(const uint64_t values[MON_HISTORY_SAMPLES],
-                                       const mon_history *history) {
+static void render_history_json_values(
+    const uint64_t values[MON_HISTORY_SAMPLES],
+    const bool available[MON_HISTORY_SAMPLES], const mon_history *history) {
     fputc('[', stdout);
     if (history) {
         for (size_t i = 0U; i < history->count; i++) {
             if (i > 0U) fputc(',', stdout);
-            printf("%" PRIu64, history_at(values, history, i));
+            if (history_available_at(available, history, i))
+                printf("%" PRIu64, history_at(values, history, i));
+            else fputs("null", stdout);
         }
     }
     fputc(']', stdout);
@@ -729,6 +768,7 @@ static int render_performance_json(const mon_report *report,
         ? report->network_interfaces : network_budget;
     fputs("{\"schema\":\"synapse.monitor.performance/v2\","
           "\"readOnly\":true,\"view\":\"performance\"", stdout);
+    mon_render_stream_metadata(options);
     json_u64("sampledMilliseconds", report->sample_milliseconds, true);
     printf(",\"cpu\":{\"available\":%s",
            report->cpu_available ? "true" : "false");
@@ -827,18 +867,28 @@ static int render_performance_json(const mon_report *report,
     printf("],\"truncated\":%s},\"history\":{\"cpuPercentMilli\":",
            report->network_truncated ? "true" : "false");
     render_history_json_values(options->history ? options->history->cpu : NULL,
+                               options->history
+                                   ? options->history->cpu_available : NULL,
                                options->history);
     fputs(",\"memoryPercentMilli\":", stdout);
     render_history_json_values(options->history ? options->history->memory : NULL,
+                               options->history
+                                   ? options->history->memory_available : NULL,
                                options->history);
     fputs(",\"gpuPercentMilli\":", stdout);
     render_history_json_values(options->history ? options->history->gpu : NULL,
+                               options->history
+                                   ? options->history->gpu_available : NULL,
                                options->history);
     fputs(",\"diskBytesPerSecond\":", stdout);
     render_history_json_values(options->history ? options->history->disk : NULL,
+                               options->history
+                                   ? options->history->disk_available : NULL,
                                options->history);
     fputs(",\"networkBytesPerSecond\":", stdout);
     render_history_json_values(options->history ? options->history->network : NULL,
+                               options->history
+                                   ? options->history->network_available : NULL,
                                options->history);
     fputs("},\"semantics\":{\"ratesAreSampleDeltas\":true,"
           "\"historyMaximumSamples\":60,"

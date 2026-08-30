@@ -3,8 +3,29 @@
 set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
-[[ $($binary --version) == 'synapse-monitor 0.3.0-alpha.3' ]]
+repo=$(cd "$(dirname "$0")/.." && pwd)
+[[ $($binary --version) == 'synapse-monitor 0.4.0-alpha.4' ]]
 $binary --help | grep -Fq 'The command is read-only'
+$binary describe --format json >"${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
+python3 - "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json" \
+  "$repo/schemas/presentation-v1.schema.json" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1]));schema=json.load(open(sys.argv[2]))
+assert schema['$schema']=='https://json-schema.org/draft/2020-12/schema'
+assert schema['properties']['schema']['const']=='synapse.monitor.presentation/v1'
+assert x['schema']=='synapse.monitor.presentation/v1' and x['readOnly'] is True
+assert x['producer']['version']=='0.4.0-alpha.4'
+assert [v['id'] for v in x['views']]==['processes','performance','services','startup','connections','information']
+assert [v['ordinal'] for v in x['views']]==[1,2,3,4,5,6]
+assert x['formats']['stream']['mediaType']=='application/x-ndjson'
+assert x['formats']['stream']['maximumLineBytes']==2*1024*1024
+assert x['history']['unavailableSample'] is None
+assert x['history']['measuredZeroDistinctFromUnavailable'] is True
+assert x['localization']['humanLabelsOwnedByGui'] is True
+assert not any(x['authority'].values()) and not any(x['privacy'].values())
+assert 'command' not in x['formats']['stream'] and 'argv' not in x['formats']['stream']
+PY
+rm -f "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -249,6 +270,7 @@ assert {r['class'] for r in x['rows']}=={'application','system','kernel'}
 assert all('commandLine' not in r and 'path' not in r and 'environment' not in r for r in x['rows'])
 a=next(r for r in x['rows'] if r['name']=='alpha')
 d=next(r for r in x['rows'] if r['name']=='daemon')
+assert a['startTicks']==1000 and d['startTicks']==3001
 assert a['sampled'] and a['cpuPercentMilli'] is not None and a['readBytesPerSecond']>0 and a['writeBytesPerSecond']>0
 assert d['sampled'] is False and d['cpuPercentMilli'] is None and d['readBytesPerSecond'] is None
 PY
@@ -292,6 +314,65 @@ assert [r['name'] for r in x['network']['rows']]==['eth0']
 assert x['semantics']['telemetry'] is False and 'rows' not in x
 PY
 
+# Every view can be delivered as one bounded full-frame NDJSON object.
+for view in processes performance services startup connections information; do
+  if [[ $view == processes || $view == performance ]]; then
+    reset_sample
+    advance &
+    advance_pid=$!
+    $binary stream --view "$view" --iterations 1 --interval-ms 250 \
+      --sample-ms 100 >"$work/stream-$view.ndjson"
+    wait "$advance_pid"
+  else
+    $binary stream --view "$view" --iterations 1 --interval-ms 250 \
+      >"$work/stream-$view.ndjson"
+  fi
+done
+python3 - "$work" "$repo/schemas/stream-frame-v1.schema.json" <<'PY'
+import json,os,sys
+root=sys.argv[1];schema=json.load(open(sys.argv[2]))
+assert schema['properties']['schema']['const']=='synapse.monitor.stream-frame/v1'
+expected={'processes':'synapse.monitor.snapshot/v1','performance':'synapse.monitor.performance/v2','services':'synapse.monitor.services/v1','startup':'synapse.monitor.startup/v1','connections':'synapse.monitor.connections/v1','information':'synapse.monitor.information/v1'}
+for view,want in expected.items():
+ raw=open(os.path.join(root,f'stream-{view}.ndjson'),'rb').read()
+ assert raw.endswith(b'\n') and raw.count(b'\n')==1 and len(raw)<=2*1024*1024
+ x=json.loads(raw);assert x['schema']==want and x['view']==view and x['readOnly'] is True
+ frame=x['stream'];assert set(frame)=={'schema','sequence','intervalMilliseconds'}
+ assert frame['schema']=='synapse.monitor.stream-frame/v1'
+ assert frame['sequence']==0 and frame['intervalMilliseconds']==250
+PY
+
+# Streaming history grows oldest-first, carries sequence, and preserves null.
+reset_sample
+advance &
+$binary stream --view performance --sample-ms 100 --interval-ms 250 \
+  --iterations 2 --limit 36 >"$work/performance-stream.ndjson"
+wait
+python3 - "$work/performance-stream.ndjson" <<'PY'
+import json,sys
+raw=open(sys.argv[1],'rb').read();assert b'\n\n' not in raw
+rows=[json.loads(line) for line in raw.splitlines()];assert len(rows)==2
+assert [x['stream']['sequence'] for x in rows]==[0,1]
+assert [len(x['history']['cpuPercentMilli']) for x in rows]==[1,2]
+assert [len(x['history']['memoryPercentMilli']) for x in rows]==[1,2]
+assert all(len(line)<=2*1024*1024 for line in raw.splitlines())
+PY
+mv "$sys/class/drm/card0/device/gpu_busy_percent" \
+  "$sys/class/drm/card0/device/gpu_busy_percent.saved"
+reset_sample
+advance &
+$binary stream --view performance --sample-ms 100 --interval-ms 250 \
+  --iterations 1 --limit 36 >"$work/performance-unavailable.ndjson"
+wait
+mv "$sys/class/drm/card0/device/gpu_busy_percent.saved" \
+  "$sys/class/drm/card0/device/gpu_busy_percent"
+python3 - "$work/performance-unavailable.ndjson" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1]));assert x['gpu']['available'] is False
+assert x['history']['gpuPercentMilli']==[None]
+assert x['history']['cpuPercentMilli'][0] is not None
+PY
+
 # Services expose status/startup/PID/user without executable paths or mutation.
 $binary snapshot --view services --format json --sort startup --limit 8 \
   >"$work/services.json"
@@ -333,6 +414,7 @@ python3 - "$work/connections.json" <<'PY'
 import json,sys
 x=json.load(open(sys.argv[1]));assert x['schema']=='synapse.monitor.connections/v1'
 t=next(r for r in x['rows'] if r['protocol']=='tcp')
+assert t['socketInode']==12345
 assert t['local']=='127.0.0.1:8080' and t['remote']=='10.0.0.2:443'
 assert t['state']=='established' and t['pid']==100 and t['process']=='alpha'
 v6=next(r for r in x['rows'] if r['protocol']=='tcp6')
@@ -473,12 +555,18 @@ expect_two "$binary" inspect
 expect_two "$binary" inspect --pid 0
 expect_two "$binary" inspect --pid 100 --sort cpu
 expect_two "$binary" watch --format json
+expect_two "$binary" watch --format ndjson
+expect_two "$binary" snapshot --format ndjson
+expect_two "$binary" stream --format json --iterations 1
+expect_two "$binary" stream --format text --iterations 1
+expect_two "$binary" describe --format text
+expect_two "$binary" inspect --pid 100 --format ndjson
 set +e
 $binary mutate --pid 1 >"$work/mutate.out" 2>"$work/mutate.err"
 status=$?
 set -e
 [[ $status == 2 ]]
-grep -Fq 'expected snapshot, watch or inspect' "$work/mutate.err"
+grep -Fq 'expected snapshot, stream, watch, describe or inspect' "$work/mutate.err"
 
 # Test roots reject traversal before probing.
 set +e

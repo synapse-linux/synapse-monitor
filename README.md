@@ -4,7 +4,7 @@ Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
 Its C17 core provides a dense terminal interface and versioned JSON contracts
 without requiring a graphical session.
 
-Alpha 3 includes six informational views and corrects the Alpha 2 GPU/thermal gap:
+Alpha 4 retains the six accepted informational views and adds typed output contracts for a separate graphical presentation. Alpha 3 corrected the earlier GPU/thermal gap:
 
 1. **Processes** — bounded application, system and kernel groups with CPU,
    memory, I/O, state, thread, PID and user observations.
@@ -43,6 +43,8 @@ make clean all test
 ```bash
 synapse-monitor snapshot
 synapse-monitor snapshot --view performance --format json
+synapse-monitor describe --format json
+synapse-monitor stream --view performance --format ndjson --interval-ms 750
 synapse-monitor snapshot --view services --sort startup
 synapse-monitor snapshot --view startup --filter portal
 synapse-monitor snapshot --view connections --sort local
@@ -60,8 +62,16 @@ Interactive watch keys:
 - uppercase `Q` exits.
 
 Human output is deterministic `en_US`. Machine output is locale-neutral and
-uses exact-major contracts documented in `docs/json-contracts.md`. Unknown
-views, options, identifiers, duplicate columns and oversized inputs fail closed.
+uses exact-major contracts documented in `docs/json-contracts.md`. `describe`
+provides the closed capability catalogue; `stream` emits bounded full-view
+NDJSON frames with stable sequence and row identities for a native GUI adapter.
+Unknown views, formats, options, identifiers, duplicate columns and oversized
+inputs fail closed.
+
+QML remains presentation-only: it translates identifiers and chooses layout,
+typography, color and animation. A native adapter owns fixed argv, child-process
+lifetime, 2 MiB line bounds and schema validation. Details are in
+`docs/gui-contracts.md`.
 
 Full paths, raw launch commands, authentication credentials, secrets and serial
 numbers remain private. Safe executable basenames, semantic source scopes,
@@ -73,5 +83,5 @@ never substitutes CPU-package temperature for an integrated GPU that has no
 dedicated kernel temperature sensor. Driver-unexposed GPU values remain `null`
 or `unavailable`, not fabricated zeroes.
 
-The CLI contract remains provisional during Alpha 3, so translated manual pages
+The CLI contract remains provisional during Alpha 4, so translated manual pages
 remain deferred until the command surface is definitive.

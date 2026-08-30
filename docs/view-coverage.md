@@ -4,7 +4,7 @@ This matrix is the independent first-party completeness gate for the terminal
 monitor. It names product requirements, not external products or visual
 expression.
 
-| Area | Alpha 3 content | Safety treatment |
+| Area | Alpha 4 content | Safety treatment |
 |---|---|---|
 | Processes | Application/system/kernel groups; name, PID, user, state, threads, CPU, RAM, read and write rates; live totals | PID plus start-time correlation; no command, environment or path |
 | Performance | Aggregate CPU, logical CPUs, RAM, bounded GPU inventory and driver-exposed utilization/VRAM/temperature/clocks/power/fan parameters, CPU/GPU/storage/battery/system temperatures, general fans, physical disks, network interfaces, 60-sample history | Local bounded counters; unavailable is distinct from zero; integrated-GPU temperature is never inferred; no telemetry |
@@ -14,6 +14,7 @@ expression.
 | Information | OS, kernel, architecture, processor, vendor/model, memory, firmware and uptime | No host name, machine ID or serial number |
 | Filtering | Bounded type-to-filter plus explicit `/` editor | Printable ASCII, 64-byte maximum |
 | Presentation | Reviewed columns, sorting, grouping, dense/balanced/wide layout, default/contrast/mono theme | Closed identifiers; unknown and conflicting input fails closed |
+| Graphical transport | Versioned capability discovery, JSON snapshots, bounded full-frame NDJSON, stable row identities and nullable history | Native adapter owns fixed argv and validation; QML owns only visual presentation |
 | Deep inspection | Numeric Linux credentials, capabilities, seccomp, no-new-privileges, module basenames, descriptor/socket counts | Explicit PID; identity revalidation; no module paths, descriptor targets or dumps |
 
 ## Deliberately absent authority

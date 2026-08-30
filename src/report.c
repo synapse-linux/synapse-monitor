@@ -310,18 +310,23 @@ void mon_report_free(mon_report *report) {
 void mon_history_update(mon_history *history, const mon_report *report) {
     if (!history || !report) return;
     size_t index = history->next;
+    history->cpu_available[index] = report->cpu_available;
     history->cpu[index] = report->cpu_available
         ? report->cpu_busy_percent_milli : 0U;
-    history->memory[index] = report->memory_available
-        && report->memory_total_bytes > 0U
+    history->memory_available[index] = report->memory_available
+        && report->memory_total_bytes > 0U;
+    history->memory[index] = history->memory_available[index]
         ? multiply_divide(report->memory_used_bytes, 100000U,
                           report->memory_total_bytes) : 0U;
+    history->gpu_available[index] = report->gpu_available;
     history->gpu[index] = report->gpu_available
         ? report->gpu_busy_percent_milli : 0U;
+    history->disk_available[index] = report->disk_available;
     history->disk[index] = report->disk_read_bytes_per_second
         > UINT64_MAX - report->disk_write_bytes_per_second
         ? UINT64_MAX : report->disk_read_bytes_per_second
           + report->disk_write_bytes_per_second;
+    history->network_available[index] = report->network_available;
     history->network[index] = report->network_rx_bytes_per_second
         > UINT64_MAX - report->network_tx_bytes_per_second
         ? UINT64_MAX : report->network_rx_bytes_per_second

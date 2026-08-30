@@ -4,7 +4,7 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share
 BUILD_DIR ?= build
-VERSION := 0.3.0-alpha.3
+VERSION := 0.4.0-alpha.4
 
 BASE_CPPFLAGS = -D_POSIX_C_SOURCE=200809L -D_FORTIFY_SOURCE=3 \
 	-DSYNAPSE_MONITOR_VERSION='"$(VERSION)"'
@@ -22,7 +22,7 @@ CFLAGS ?=
 LDFLAGS ?=
 LDLIBS ?=
 SOURCES = src/main.c src/cli.c src/probe.c src/report.c src/inventory.c \
-	src/render.c src/views.c src/tui.c
+	src/render.c src/views.c src/presentation.c src/tui.c
 OBJECTS = $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 TARGET = $(BUILD_DIR)/synapse-monitor
 
@@ -50,10 +50,16 @@ install: $(TARGET)
 		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/architecture.md"
 	install -D -m 0644 docs/json-contracts.md \
 		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/json-contracts.md"
+	install -D -m 0644 docs/gui-contracts.md \
+		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/gui-contracts.md"
 	install -D -m 0644 docs/requirements.md \
 		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/requirements.md"
 	install -D -m 0644 docs/view-coverage.md \
 		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/view-coverage.md"
+	install -D -m 0644 schemas/presentation-v1.schema.json \
+		"$(DESTDIR)$(DATADIR)/synapse-monitor/schemas/presentation-v1.schema.json"
+	install -D -m 0644 schemas/stream-frame-v1.schema.json \
+		"$(DESTDIR)$(DATADIR)/synapse-monitor/schemas/stream-frame-v1.schema.json"
 	install -D -m 0644 LICENSE "$(DESTDIR)$(DATADIR)/licenses/synapse-monitor/LICENSE"
 
 clean:

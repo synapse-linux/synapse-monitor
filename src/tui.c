@@ -29,6 +29,17 @@ static void request_stop(int signal_number) {
     stop_requested = 1;
 }
 
+static void install_stop_handlers(void) {
+    struct sigaction action;
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = request_stop;
+    sigemptyset(&action.sa_mask);
+    (void)sigaction(SIGHUP, &action, NULL);
+    (void)sigaction(SIGINT, &action, NULL);
+    (void)sigaction(SIGQUIT, &action, NULL);
+    (void)sigaction(SIGTERM, &action, NULL);
+}
+
 static int enable_raw_terminal(void) {
     if (tcgetattr(STDIN_FILENO, &saved_terminal) != 0) return -1;
     struct termios raw = saved_terminal;
@@ -296,6 +307,7 @@ static int collect_and_render(const mon_roots *roots, mon_options *options,
 
 int mon_run_watch(const mon_roots *roots, mon_options *options) {
     if (!roots || !options || options->format != MON_FORMAT_TEXT) return 2;
+    stop_requested = 0;
     bool interactive = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
     uint64_t iterations = options->iterations;
     if (!interactive && iterations == 0U) iterations = 1U;
@@ -309,14 +321,7 @@ int mon_run_watch(const mon_roots *roots, mon_options *options) {
             fputs("synapse-monitor: cannot register terminal restoration\n", stderr);
             return 1;
         }
-        struct sigaction action;
-        memset(&action, 0, sizeof(action));
-        action.sa_handler = request_stop;
-        sigemptyset(&action.sa_mask);
-        (void)sigaction(SIGHUP, &action, NULL);
-        (void)sigaction(SIGINT, &action, NULL);
-        (void)sigaction(SIGQUIT, &action, NULL);
-        (void)sigaction(SIGTERM, &action, NULL);
+        install_stop_handlers();
     }
     mon_history history;
     memset(&history, 0, sizeof(history));
@@ -360,4 +365,37 @@ int mon_run_watch(const mon_roots *roots, mon_options *options) {
     }
     restore_terminal();
     return exit_status;
+}
+
+int mon_run_stream(const mon_roots *roots, mon_options *options) {
+    if (!roots || !options || options->format != MON_FORMAT_NDJSON) return 2;
+    stop_requested = 0;
+    install_stop_handlers();
+    mon_history history;
+    memset(&history, 0, sizeof(history));
+    uint64_t completed = 0U;
+    while (!stop_requested
+           && (options->iterations == 0U || completed < options->iterations)) {
+        mon_options display = *options;
+        display.format = MON_FORMAT_JSON;
+        display.interactive_output = false;
+        display.stream_output = true;
+        display.stream_sequence = completed;
+        char error[MON_ERROR_MAX] = {0};
+        if (collect_and_render(roots, &display, &history, error,
+                               sizeof(error)) != 0) {
+            fprintf(stderr, "synapse-monitor: %s\n",
+                    error[0] ? error : "stream probe failed");
+            return 1;
+        }
+        if (fflush(stdout) != 0) return 1;
+        completed++;
+        if (options->iterations != 0U
+            && completed >= options->iterations) break;
+        if (wait_without_input(options->interval_milliseconds) != 0) {
+            fputs("synapse-monitor: stream refresh wait failed\n", stderr);
+            return 1;
+        }
+    }
+    return 0;
 }

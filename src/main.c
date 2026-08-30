@@ -36,6 +36,24 @@ static bool sort_valid(mon_view view, mon_sort sort) {
     }
 }
 
+static int run_describe(int argc, char **argv) {
+    if (argc == 2 || (argc == 3 && strcmp(argv[2], "--format=json") == 0)
+        || (argc == 4 && strcmp(argv[2], "--format") == 0
+            && strcmp(argv[3], "json") == 0))
+        return mon_render_presentation();
+    if (argc == 3 && strcmp(argv[2], "--help") == 0) {
+        mon_usage(stdout);
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[2], "--version") == 0) {
+        puts("synapse-monitor " MON_VERSION);
+        return 0;
+    }
+    fputs("synapse-monitor: invalid arguments\n", stderr);
+    mon_usage(stderr);
+    return 2;
+}
+
 static int run_inspect(int argc, char **argv) {
     mon_format format = MON_FORMAT_TEXT;
     uint64_t pid = 0U;
@@ -69,7 +87,7 @@ static int run_inspect(int argc, char **argv) {
             default: goto invalid;
         }
     }
-    if (optind != argc || !pid_set) goto invalid;
+    if (optind != argc || !pid_set || format == MON_FORMAT_NDJSON) goto invalid;
     mon_roots roots;
     char error[MON_ERROR_MAX] = {0};
     if (mon_roots_from_environment(&roots, error, sizeof(error)) != 0) {
@@ -151,17 +169,22 @@ int main(int argc, char **argv) {
         mon_usage(stdout);
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "describe") == 0)
+        return run_describe(argc, argv);
     if (argc >= 2 && strcmp(argv[1], "inspect") == 0)
         return run_inspect(argc, argv);
     if (argc < 2 || (strcmp(argv[1], "snapshot") != 0
+                     && strcmp(argv[1], "stream") != 0
                      && strcmp(argv[1], "watch") != 0)) {
-        fputs("synapse-monitor: expected snapshot, watch or inspect\n", stderr);
+        fputs("synapse-monitor: expected snapshot, stream, watch, describe or inspect\n",
+              stderr);
         mon_usage(stderr);
         return 2;
     }
     bool watch = strcmp(argv[1], "watch") == 0;
+    bool stream = strcmp(argv[1], "stream") == 0;
     mon_options options = {
-        .format = MON_FORMAT_TEXT,
+        .format = stream ? MON_FORMAT_NDJSON : MON_FORMAT_TEXT,
         .view = MON_VIEW_PROCESSES,
         .sort = MON_SORT_CPU,
         .group = MON_GROUP_CLASS,
@@ -174,6 +197,8 @@ int main(int argc, char **argv) {
         .interval_milliseconds = 1000U,
         .iterations = 0U,
         .interactive_output = false,
+        .stream_output = false,
+        .stream_sequence = 0U,
         .history = NULL
     };
     enum {
@@ -278,8 +303,11 @@ int main(int argc, char **argv) {
             default: goto invalid;
         }
     }
-    if (optind != argc || (!watch && (interval_set || iterations_set))
-        || (watch && options.format != MON_FORMAT_TEXT)) goto invalid;
+    if (optind != argc
+        || (!watch && !stream && (interval_set || iterations_set))
+        || (watch && options.format != MON_FORMAT_TEXT)
+        || (stream && options.format != MON_FORMAT_NDJSON)
+        || (!watch && !stream && options.format == MON_FORMAT_NDJSON)) goto invalid;
     if (!sort_set) options.sort = mon_default_sort(options.view);
     if (!sort_valid(options.view, options.sort)) goto invalid;
     if (group_set && options.view != MON_VIEW_PROCESSES) goto invalid;
@@ -301,6 +329,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     if (watch) return mon_run_watch(&roots, &options);
+    if (stream) return mon_run_stream(&roots, &options);
     int result = render_snapshot(&roots, &options, error, sizeof(error));
     if (result != 0 && error[0]) fprintf(stderr, "synapse-monitor: %s\n", error);
     return result;

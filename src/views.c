@@ -190,7 +190,9 @@ static int render_services_text(const mon_service_snapshot *snapshot,
 
 static int render_services_json(const mon_service_snapshot *snapshot,
                                 const mon_options *options) {
-    fputs("{\"schema\":\"synapse.monitor.services/v1\",\"readOnly\":true,\"view\":\"services\",", stdout);
+    fputs("{\"schema\":\"synapse.monitor.services/v1\",\"readOnly\":true,\"view\":\"services\"", stdout);
+    mon_render_stream_metadata(options);
+    fputc(',', stdout);
     json_selection(options);
     fputs(",\"columns\":", stdout);
     json_columns(MON_VIEW_SERVICES, options->columns);
@@ -274,7 +276,9 @@ static int render_startup_text(const mon_startup_snapshot *snapshot,
 
 static int render_startup_json(const mon_startup_snapshot *snapshot,
                                const mon_options *options) {
-    fputs("{\"schema\":\"synapse.monitor.startup/v1\",\"readOnly\":true,\"view\":\"startup\",", stdout);
+    fputs("{\"schema\":\"synapse.monitor.startup/v1\",\"readOnly\":true,\"view\":\"startup\"", stdout);
+    mon_render_stream_metadata(options);
+    fputc(',', stdout);
     json_selection(options);
     fputs(",\"columns\":", stdout);
     json_columns(MON_VIEW_STARTUP, options->columns);
@@ -364,7 +368,9 @@ static int render_connections_text(const mon_connection_snapshot *snapshot,
 
 static int render_connections_json(const mon_connection_snapshot *snapshot,
                                    const mon_options *options) {
-    fputs("{\"schema\":\"synapse.monitor.connections/v1\",\"readOnly\":true,\"view\":\"connections\",", stdout);
+    fputs("{\"schema\":\"synapse.monitor.connections/v1\",\"readOnly\":true,\"view\":\"connections\"", stdout);
+    mon_render_stream_metadata(options);
+    fputc(',', stdout);
     json_selection(options);
     fputs(",\"columns\":", stdout);
     json_columns(MON_VIEW_CONNECTIONS, options->columns);
@@ -380,6 +386,7 @@ static int render_connections_json(const mon_connection_snapshot *snapshot,
         const mon_connection *row = &snapshot->rows[i];
         if (i > 0U) fputc(',', stdout);
         fputs("{\"protocol\":", stdout); json_string(row->protocol);
+        printf(",\"socketInode\":%" PRIu64, row->inode);
         fputs(",\"local\":", stdout); json_string(row->local);
         fputs(",\"remote\":", stdout); json_string(row->remote);
         fputs(",\"state\":", stdout); json_string(row->state);
@@ -591,7 +598,9 @@ static void json_nullable_string(const char *name, const char *value,
 static int render_information_json(const mon_information *information,
                                    const mon_options *options) {
     fputs("{\"schema\":\"synapse.monitor.information/v1\","
-          "\"readOnly\":true,\"view\":\"information\",", stdout);
+          "\"readOnly\":true,\"view\":\"information\"", stdout);
+    mon_render_stream_metadata(options);
+    fputc(',', stdout);
     json_selection(options);
     fputs(",\"information\":{", stdout);
     json_nullable_string("operatingSystem", information->operating_system, false);

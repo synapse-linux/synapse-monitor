@@ -1,4 +1,4 @@
-# Alpha 3 requirements
+# Alpha 4 requirements
 
 ## Functional views
 
@@ -23,6 +23,13 @@
 - `MON-034`: report bounded CPU-package, CPU-core, GPU, storage, battery and system temperatures with optional maximum/critical thresholds.
 - `MON-035`: report bounded general fan RPM observations.
 - `MON-036`: never infer an integrated-GPU temperature from CPU-package or generic thermal-zone temperature.
+- `MON-037`: expose a versioned locale-neutral presentation-capability contract with all view schemas, closed controls, units, bounds and authority.
+- `MON-038`: emit bounded NDJSON streams containing one complete view object per non-empty line.
+- `MON-039`: attach zero-based strictly increasing stream sequence and selected interval metadata without changing the payload view schema.
+- `MON-040`: retain at most 60 oldest-first graphical history samples and encode unavailable samples as `null`, distinct from measured zero.
+- `MON-041`: expose stable read-only row identities for graphical reconciliation, including process PID/start ticks and connection socket inode.
+- `MON-042`: keep command templates and visual styling out of the core capability contract; translated labels and visual composition belong to the GUI.
+- `MON-043`: require a native adapter to own fixed argv, child lifetime, line caps and schema validation; QML must not construct commands or executable paths.
 
 ## Safety and privacy
 

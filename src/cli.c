@@ -15,6 +15,7 @@ int mon_parse_format(const char *value, mon_format *format) {
     if (!value || !format) return -1;
     if (strcmp(value, "text") == 0) *format = MON_FORMAT_TEXT;
     else if (strcmp(value, "json") == 0) *format = MON_FORMAT_JSON;
+    else if (strcmp(value, "ndjson") == 0) *format = MON_FORMAT_NDJSON;
     else return -1;
     return 0;
 }
@@ -335,13 +336,15 @@ void mon_usage(FILE *output) {
     (void)fputs(
         "Usage:\n"
         "  synapse-monitor snapshot [options]\n"
+        "  synapse-monitor stream [options]\n"
         "  synapse-monitor watch [options]\n"
+        "  synapse-monitor describe [--format json]\n"
         "  synapse-monitor inspect --pid PID [--format text|json]\n\n"
         "Views:\n"
         "  processes | performance | services | startup | connections | information\n\n"
         "Options:\n"
         "  --view VIEW\n"
-        "  --format text|json\n"
+        "  --format text|json|ndjson     ndjson is stream-only\n"
         "  --sort ID                     reviewed view-appropriate column ID\n"
         "  --group class|name|none       processes only\n"
         "  --columns LIST               reviewed columns for the selected table\n"
@@ -350,10 +353,12 @@ void mon_usage(FILE *output) {
         "  --filter TEXT                 printable ASCII, at most 64 bytes\n"
         "  --limit 1..512\n"
         "  --sample-ms 100..2000\n"
-        "  --interval-ms 250..10000     watch only\n"
-        "  --iterations 1..1000000      watch only; default is continuous on a TTY\n"
+        "  --interval-ms 250..10000     watch or stream\n"
+        "  --iterations 1..1000000      watch or stream; stream defaults continuous\n"
         "  --help\n"
         "  --version\n\n"
+        "Describe reports GUI-safe capabilities. Stream emits one complete,\n"
+        "locale-neutral JSON object per line with bounded 60-sample history.\n"
         "Performance reports bounded GPU parameters, temperatures and fans with\n"
         "explicit unavailable values and no integrated-GPU temperature inference.\n"
         "Process inspection reports bounded module basenames, Linux credentials,\n"
