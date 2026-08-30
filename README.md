@@ -1,23 +1,34 @@
 # Synapse Monitor
 
 Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
-Its C17 core produces a useful dense terminal view and a versioned JSON
-snapshot without requiring a graphical session.
+Its C17 core provides a dense terminal interface and versioned JSON contracts
+without requiring a graphical session.
 
-Alpha 1 covers:
+Alpha 2 includes six complete informational views:
 
-- bounded process observations grouped by application, system or kernel class;
-- sampled CPU and per-process CPU activity;
-- physical RAM usage;
-- unprivileged GPU busy and local-memory data when the driver exposes it;
-- physical-disk and non-loopback network rates;
-- fixed sorting, bounded name filtering and reviewed selectable columns;
-- an interactive terminal watch with `/`, `s`, `g`, `c` and `q` controls.
+1. **Processes** — bounded application, system and kernel groups with CPU,
+   memory, I/O, state, thread, PID and user observations.
+2. **Performance** — overall and logical-processor CPU activity, RAM,
+   optional GPU/VRAM, per-physical-disk rates, per-interface network rates and
+   a 60-sample terminal history.
+3. **Services** — name, description, active state, startup state, PID, user and
+   a safe executable label.
+4. **Startup Apps** — name, publisher when declared, state, type, semantic
+   location and a safe command label with arguments redacted.
+5. **Connections** — TCP/UDP protocol, local and remote endpoint, state and
+   bounded socket-inode correlation to PID/process identity.
+6. **Information** — operating system, kernel, architecture, processor,
+   system model, physical memory, firmware and uptime without host names or
+   serial numbers.
 
-It does not expose process command lines, environments, credentials, tokens or
-paths. There are no kill, signal, dump, priority, service, startup, cgroup,
-network-control or privilege operations. It opens no listener and sends no
-telemetry.
+Explicit process inspection also reports PID/start-time identity, Linux
+UID/GID and capability metadata, seccomp/no-new-privileges state, module
+basenames, and descriptor/socket counts. It never exposes module paths,
+descriptor targets, command lines or environments.
+
+There are no kill, signal, dump, priority, service, startup, cgroup,
+connection-control or privilege operations. The program constructs no
+subprocess command, opens no network socket or listener, and sends no telemetry.
 
 ## Build and test
 
@@ -29,16 +40,31 @@ make clean all test
 
 ```bash
 synapse-monitor snapshot
-synapse-monitor snapshot --format json --limit 50
-synapse-monitor snapshot --filter compositor --sort memory
-synapse-monitor snapshot --group name \
-  --columns name,pid,cpu,memory,read,write
+synapse-monitor snapshot --view performance --format json
+synapse-monitor snapshot --view services --sort startup
+synapse-monitor snapshot --view startup --filter portal
+synapse-monitor snapshot --view connections --sort local
+synapse-monitor snapshot --view information
+synapse-monitor inspect --pid 1234 --format json
 synapse-monitor watch
 ```
 
-Human output is deterministic `en_US`. JSON uses the locale-neutral exact-major
-contract `synapse.monitor.snapshot/v1`. Unknown options, sort/group identifiers,
-columns, duplicate columns and oversized filters fail closed.
+Interactive watch keys:
 
-The CLI contract remains provisional during Alpha 1, so translated manual pages
-are deferred until the command surface is declared definitive.
+- `1`–`6` or Tab select a view;
+- start typing or press `/` to filter the current table;
+- uppercase `S`, `G`, and `C` cycle reviewed sorting, grouping and column sets;
+- uppercase `L` and `T` cycle dense/balanced/wide layouts and default/contrast/mono themes;
+- uppercase `Q` exits.
+
+Human output is deterministic `en_US`. Machine output is locale-neutral and
+uses exact-major contracts documented in `docs/json-contracts.md`. Unknown
+views, options, identifiers, duplicate columns and oversized inputs fail closed.
+
+Full paths, raw launch commands, authentication credentials, secrets and serial
+numbers remain private. Safe executable basenames, semantic source scopes and
+numeric kernel credential metadata are deliberately distinguished from those
+private values.
+
+The CLI contract remains provisional during Alpha 2, so translated manual pages
+remain deferred until the command surface is definitive.

@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <pwd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -38,21 +39,51 @@ static bool safe_absolute_root(const char *value) {
     return true;
 }
 
-int mon_roots_from_environment(mon_roots *roots, char *error, size_t error_size) {
-    if (!roots) return -1;
-    roots->proc_root = "/proc";
-    roots->sys_root = "/sys";
-    const char *allow = getenv("SYNAPSE_MONITOR_ALLOW_TEST_ROOTS");
-    if (!allow || strcmp(allow, "1") != 0) return 0;
-    const char *proc_root = getenv("SYNAPSE_MONITOR_PROC_ROOT");
-    const char *sys_root = getenv("SYNAPSE_MONITOR_SYS_ROOT");
-    if (!safe_absolute_root(proc_root) || !safe_absolute_root(sys_root)) {
+static char resolved_home[MON_PATH_MAX];
+
+static int apply_optional_root(const char *environment_name, const char **target,
+                               char *error, size_t error_size) {
+    const char *value = getenv(environment_name);
+    if (!value) return 0;
+    if (!safe_absolute_root(value)) {
         if (error && error_size > 0U)
             snprintf(error, error_size, "invalid absolute normalized test root");
         return -1;
     }
-    roots->proc_root = proc_root;
-    roots->sys_root = sys_root;
+    *target = value;
+    return 0;
+}
+
+int mon_roots_from_environment(mon_roots *roots, char *error, size_t error_size) {
+    if (!roots) return -1;
+    memset(roots, 0, sizeof(*roots));
+    roots->proc_root = "/proc";
+    roots->sys_root = "/sys";
+    roots->etc_root = "/etc";
+    roots->usr_root = "/usr";
+    roots->run_root = "/run";
+    roots->home_root = "/";
+    struct passwd password;
+    struct passwd *result = NULL;
+    char buffer[16384];
+    if (getpwuid_r(geteuid(), &password, buffer, sizeof(buffer), &result) == 0
+        && result && safe_absolute_root(result->pw_dir)
+        && snprintf(resolved_home, sizeof(resolved_home), "%s", result->pw_dir) > 0)
+        roots->home_root = resolved_home;
+    const char *allow = getenv("SYNAPSE_MONITOR_ALLOW_TEST_ROOTS");
+    if (!allow || strcmp(allow, "1") != 0) return 0;
+    if (apply_optional_root("SYNAPSE_MONITOR_PROC_ROOT", &roots->proc_root,
+                            error, error_size) != 0
+        || apply_optional_root("SYNAPSE_MONITOR_SYS_ROOT", &roots->sys_root,
+                               error, error_size) != 0
+        || apply_optional_root("SYNAPSE_MONITOR_ETC_ROOT", &roots->etc_root,
+                               error, error_size) != 0
+        || apply_optional_root("SYNAPSE_MONITOR_USR_ROOT", &roots->usr_root,
+                               error, error_size) != 0
+        || apply_optional_root("SYNAPSE_MONITOR_RUN_ROOT", &roots->run_root,
+                               error, error_size) != 0
+        || apply_optional_root("SYNAPSE_MONITOR_HOME_ROOT", &roots->home_root,
+                               error, error_size) != 0) return -1;
     return 0;
 }
 
@@ -64,9 +95,13 @@ static int join_path(char *output, size_t output_size, const char *root,
 
 static char *read_bounded_file(const char *path, size_t limit, size_t *size_out) {
     if (size_out) *size_out = 0U;
+    if (!path || limit == 0U || limit > MON_DISKSTATS_LIMIT) {
+        errno = EINVAL;
+        return NULL;
+    }
     int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if (descriptor < 0) return NULL;
-    char *text = malloc(limit + 1U);
+    char *text = malloc(limit + 2U);
     if (!text) {
         int saved = errno;
         close(descriptor);
@@ -107,6 +142,11 @@ static char *read_bounded_file(const char *path, size_t limit, size_t *size_out)
         }
     }
     close(descriptor);
+    if (used > limit) {
+        free(text);
+        errno = EOVERFLOW;
+        return NULL;
+    }
     text[used] = '\0';
     if (size_out) *size_out = used;
     return text;
@@ -140,6 +180,25 @@ static bool parse_mem_kib(const char *line, const char *key, uint64_t *bytes) {
     return true;
 }
 
+static bool parse_cpu_line(char *line, const char *expected,
+                           uint64_t *total, uint64_t *idle) {
+    char *save = NULL;
+    char *token = strtok_r(line, " \t", &save);
+    if (!token || strcmp(token, expected) != 0) return false;
+    uint64_t values[10] = {0U};
+    size_t count = 0U;
+    while (count < 10U && (token = strtok_r(NULL, " \t", &save)) != NULL) {
+        if (!parse_u64_exact(token, &values[count])) return false;
+        count++;
+    }
+    if (count < 4U) return false;
+    *total = 0U;
+    for (size_t i = 0U; i < count; i++)
+        *total = add_saturating(*total, values[i]);
+    *idle = add_saturating(values[3], count > 4U ? values[4] : 0U);
+    return true;
+}
+
 static int probe_cpu(const mon_roots *roots, mon_host_sample *sample) {
     char path[MON_PATH_MAX];
     if (join_path(path, sizeof(path), roots->proc_root, "/stat") != 0) return -1;
@@ -147,36 +206,49 @@ static int probe_cpu(const mon_roots *roots, mon_host_sample *sample) {
     char *text = read_bounded_file(path, MON_STAT_FILE_LIMIT, &size);
     (void)size;
     if (!text) return -1;
-    char *newline = strchr(text, '\n');
-    if (newline) *newline = '\0';
-    char *save = NULL;
-    char *token = strtok_r(text, " \t", &save);
-    if (!token || strcmp(token, "cpu") != 0) {
-        free(text);
-        return -1;
-    }
-    uint64_t values[10] = {0U};
-    size_t count = 0U;
-    while (count < 10U && (token = strtok_r(NULL, " \t", &save)) != NULL) {
-        if (!parse_u64_exact(token, &values[count])) {
-            free(text);
-            return -1;
+    bool aggregate_seen = false;
+    char *line_save = NULL;
+    for (char *line = strtok_r(text, "\n", &line_save); line;
+         line = strtok_r(NULL, "\n", &line_save)) {
+        if (strncmp(line, "cpu", 3U) != 0) continue;
+        char label[32];
+        size_t length = strcspn(line, " \t");
+        if (length == 0U || length >= sizeof(label)) continue;
+        memcpy(label, line, length);
+        label[length] = '\0';
+        char copy[1024];
+        if (strlen(line) >= sizeof(copy)) continue;
+        (void)snprintf(copy, sizeof(copy), "%s", line);
+        uint64_t total = 0U;
+        uint64_t idle = 0U;
+        if (!parse_cpu_line(copy, label, &total, &idle)) continue;
+        if (strcmp(label, "cpu") == 0) {
+            sample->cpu_total_ticks = total;
+            sample->cpu_idle_ticks = idle;
+            aggregate_seen = true;
+            continue;
         }
-        count++;
+        if (strncmp(label, "cpu", 3U) != 0 || !isdigit((unsigned char)label[3]))
+            continue;
+        uint64_t index = 0U;
+        if (!parse_u64_exact(label + 3, &index)) continue;
+        if (index >= MON_MAX_CPUS) {
+            sample->cpu_truncated = true;
+            continue;
+        }
+        sample->cpus[index].total_ticks = total;
+        sample->cpus[index].idle_ticks = idle;
+        if ((size_t)index + 1U > sample->cpu_count)
+            sample->cpu_count = (size_t)index + 1U;
     }
-    if (count < 4U) {
-        free(text);
-        return -1;
-    }
-    uint64_t total = 0U;
-    for (size_t i = 0U; i < count; i++) total = add_saturating(total, values[i]);
-    sample->cpu_total_ticks = total;
-    sample->cpu_idle_ticks = add_saturating(values[3], count > 4U ? values[4] : 0U);
-    long processors = sysconf(_SC_NPROCESSORS_ONLN);
-    sample->processor_count = processors > 0 && processors <= 4096L
-        ? (unsigned)processors : 1U;
-    sample->cpu_available = true;
     free(text);
+    if (!aggregate_seen) return -1;
+    long processors = sysconf(_SC_NPROCESSORS_ONLN);
+    sample->processor_count = sample->cpu_count > 0U
+        ? (unsigned)sample->cpu_count
+        : (processors > 0 && processors <= (long)MON_MAX_CPUS
+           ? (unsigned)processors : 1U);
+    sample->cpu_available = true;
     return 0;
 }
 
@@ -265,6 +337,11 @@ static void probe_disk(const mon_roots *roots, mon_host_sample *sample) {
             sample->disk_devices_skipped++;
             continue;
         }
+        size_t index = sample->disk_devices;
+        (void)snprintf(sample->disks[index].name,
+                       sizeof(sample->disks[index].name), "%s", tokens[2]);
+        sample->disks[index].read_sectors = read_sectors;
+        sample->disks[index].write_sectors = write_sectors;
         sample->disk_read_sectors = add_saturating(sample->disk_read_sectors,
                                                     read_sectors);
         sample->disk_write_sectors = add_saturating(sample->disk_write_sectors,
@@ -295,7 +372,7 @@ static void probe_network(const mon_roots *roots, mon_host_sample *sample) {
         while (*name == ' ' || *name == '\t') name++;
         char *end = colon - 1;
         while (end >= name && (*end == ' ' || *end == '\t')) *end-- = '\0';
-        if (strcmp(name, "lo") == 0) continue;
+        if (!safe_kernel_name(name) || strcmp(name, "lo") == 0) continue;
         if (sample->network_interfaces >= MON_MAX_INTERFACES) {
             sample->network_truncated = true;
             continue;
@@ -310,6 +387,11 @@ static void probe_network(const mon_roots *roots, mon_host_sample *sample) {
         uint64_t transmit = 0U;
         if (count < 9U || !parse_u64_exact(values[0], &receive)
             || !parse_u64_exact(values[8], &transmit)) continue;
+        size_t index = sample->network_interfaces;
+        (void)snprintf(sample->interfaces[index].name,
+                       sizeof(sample->interfaces[index].name), "%s", name);
+        sample->interfaces[index].receive_bytes = receive;
+        sample->interfaces[index].transmit_bytes = transmit;
         sample->network_rx_bytes = add_saturating(sample->network_rx_bytes, receive);
         sample->network_tx_bytes = add_saturating(sample->network_tx_bytes, transmit);
         sample->network_interfaces++;

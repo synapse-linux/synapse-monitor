@@ -5,6 +5,42 @@
 #include <limits.h>
 #include <string.h>
 
+static bool colored(const mon_options *options) {
+    return options && options->interactive_output && options->theme != MON_THEME_MONO;
+}
+
+static const char *accent(const mon_options *options) {
+    if (!colored(options)) return "";
+    return options->theme == MON_THEME_CONTRAST ? "\033[1;93m" : "\033[1;36m";
+}
+
+static const char *strong(const mon_options *options) {
+    if (!colored(options)) return "";
+    return options->theme == MON_THEME_CONTRAST ? "\033[1;97m" : "\033[1m";
+}
+
+static const char *muted(const mon_options *options) {
+    return colored(options) ? "\033[2m" : "";
+}
+
+static const char *reset(const mon_options *options) {
+    return colored(options) ? "\033[0m" : "";
+}
+
+static void render_tabs(const mon_options *options) {
+    static const char *titles[] = {
+        "1 Processes", "2 Performance", "3 Services", "4 Startup",
+        "5 Connections", "6 Information"
+    };
+    for (size_t i = 0U; i < sizeof(titles) / sizeof(titles[0]); i++) {
+        if ((mon_view)i == options->view)
+            printf("%s[%s]%s", accent(options), titles[i], reset(options));
+        else printf(" %s ", titles[i]);
+        if (i + 1U < sizeof(titles) / sizeof(titles[0])) fputs("  ", stdout);
+    }
+    fputc('\n', stdout);
+}
+
 static void format_iec(uint64_t bytes, char *output, size_t output_size) {
     static const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
     long double value = (long double)bytes;
@@ -145,6 +181,8 @@ static void render_group_header(const mon_report *report, size_t index,
 
 static int render_text(const mon_report *report, const mon_options *options) {
     size_t returned = rows_returned(report, options);
+    render_tabs(options);
+    printf("%sPROCESSES%s\n", strong(options), reset(options));
     render_summary_text(report);
     printf("\nFilter: %s  |  Sort: %s  |  Group: %s  |  Rows: %zu/%zu\n",
            options->filter[0] ? options->filter : "(none)",
@@ -165,12 +203,12 @@ static int render_text(const mon_report *report, const mon_options *options) {
             render_process_text(&report->processes.rows[i], options->columns);
         }
     }
-    printf("\nCoverage: proc=%zu/%zu denied=%zu vanished=%zu malformed=%zu "
-           "io-unavailable=%zu truncated=%s\n",
+    printf("\n%sCoverage: proc=%zu/%zu denied=%zu vanished=%zu malformed=%zu "
+           "io-unavailable=%zu truncated=%s%s\n", muted(options),
            report->observed_rows, report->processes.numeric_directories,
            report->processes.permission_denied, report->processes.vanished,
            report->processes.malformed, report->processes.io_unavailable,
-           report->processes.truncated ? "true" : "false");
+           report->processes.truncated ? "true" : "false", reset(options));
     fputs("Controls are inspection-only; no process mutation is available.\n", stdout);
     return ferror(stdout) ? 1 : 0;
 }
@@ -227,7 +265,7 @@ static void render_available_u64(const char *name, bool available, uint64_t valu
 
 static int render_json(const mon_report *report, const mon_options *options) {
     size_t returned = rows_returned(report, options);
-    fputs("{\"schema\":\"synapse.monitor.snapshot/v1\",\"readOnly\":true", stdout);
+    fputs("{\"schema\":\"synapse.monitor.snapshot/v1\",\"readOnly\":true,\"view\":\"processes\"", stdout);
     json_u64("sampledMilliseconds", report->sample_milliseconds, true);
     fputs(",\"selection\":{\"sort\":", stdout);
     json_string(mon_sort_id(options->sort));
@@ -238,6 +276,10 @@ static int render_json(const mon_report *report, const mon_options *options) {
     json_u64("limit", options->limit, true);
     fputs(",\"columns\":", stdout);
     render_columns_json(options->columns);
+    fputs(",\"theme\":", stdout);
+    json_string(mon_theme_id(options->theme));
+    fputs(",\"layout\":", stdout);
+    json_string(mon_layout_id(options->layout));
 
     printf("},\"summary\":{\"cpu\":{\"available\":%s",
            report->cpu_available ? "true" : "false");
@@ -328,8 +370,230 @@ static int render_json(const mon_report *report, const mon_options *options) {
     return ferror(stdout) ? 1 : 0;
 }
 
+static uint64_t history_at(const uint64_t values[MON_HISTORY_SAMPLES],
+                           const mon_history *history, size_t index) {
+    size_t start = history->count < MON_HISTORY_SAMPLES ? 0U : history->next;
+    return values[(start + index) % MON_HISTORY_SAMPLES];
+}
+
+static void render_history_line(const char *label,
+                                const uint64_t values[MON_HISTORY_SAMPLES],
+                                const mon_history *history, uint64_t scale) {
+    static const char levels[] = " .:-=+*#%@";
+    if (!history || history->count == 0U) return;
+    if (scale == 0U) {
+        for (size_t i = 0U; i < history->count; i++) {
+            uint64_t value = history_at(values, history, i);
+            if (value > scale) scale = value;
+        }
+    }
+    if (scale == 0U) scale = 1U;
+    printf("%-8s ", label);
+    for (size_t i = 0U; i < history->count; i++) {
+        uint64_t value = history_at(values, history, i);
+        size_t level = value >= scale ? sizeof(levels) - 2U
+            : (size_t)(value * (sizeof(levels) - 2U) / scale);
+        fputc(levels[level], stdout);
+    }
+    fputc('\n', stdout);
+}
+
+static void performance_budgets(const mon_options *options, size_t *cpu,
+                                size_t *disk, size_t *network) {
+    size_t total = options->limit;
+    *cpu = (total + 1U) / 2U;
+    size_t remaining = total - *cpu;
+    *disk = remaining / 2U;
+    *network = remaining - *disk;
+}
+
+static int render_performance_text(const mon_report *report,
+                                   const mon_options *options) {
+    size_t cpu_budget = 0U, disk_budget = 0U, network_budget = 0U;
+    performance_budgets(options, &cpu_budget, &disk_budget, &network_budget);
+    size_t cpu_returned = report->cpu_count < cpu_budget
+        ? report->cpu_count : cpu_budget;
+    size_t disk_returned = report->disk_devices < disk_budget
+        ? report->disk_devices : disk_budget;
+    size_t network_returned = report->network_interfaces < network_budget
+        ? report->network_interfaces : network_budget;
+    render_tabs(options);
+    printf("%sPERFORMANCE%s  read-only  sample=%" PRIu64 " ms\n",
+           strong(options), reset(options), report->sample_milliseconds);
+    render_summary_text(report);
+    if (options->history && options->history->count > 0U) {
+        fputs("\nHISTORY (oldest to newest)\n", stdout);
+        render_history_line("CPU", options->history->cpu, options->history, 100000U);
+        render_history_line("RAM", options->history->memory, options->history, 100000U);
+        if (report->gpu_available)
+            render_history_line("GPU", options->history->gpu, options->history,
+                                100000U);
+        render_history_line("DISK", options->history->disk, options->history, 0U);
+        render_history_line("NETWORK", options->history->network, options->history, 0U);
+    }
+    fputs("\nLOGICAL PROCESSORS\n", stdout);
+    if (report->cpu_count == 0U) fputs("unavailable\n", stdout);
+    size_t per_line = options->layout == MON_LAYOUT_DENSE ? 8U
+        : (options->layout == MON_LAYOUT_WIDE ? 10U : 6U);
+    for (size_t i = 0U; i < cpu_returned; i++) {
+        char percent[24] = "unavailable";
+        if (report->cpu_entry_available[i])
+            format_percent(report->cpu_percent_milli[i], percent, sizeof(percent));
+        printf("CPU%-4zu %10s", i, percent);
+        if ((i + 1U) % per_line == 0U || i + 1U == cpu_returned)
+            fputc('\n', stdout);
+        else fputs("  ", stdout);
+    }
+    fputs("\nPHYSICAL DISKS\n", stdout);
+    if (!report->disk_available || report->disk_devices == 0U)
+        fputs("unavailable\n", stdout);
+    for (size_t i = 0U; i < disk_returned; i++) {
+        char read_rate[48];
+        char write_rate[48];
+        format_rate(report->disks[i].read_bytes_per_second, read_rate,
+                    sizeof(read_rate));
+        format_rate(report->disks[i].write_bytes_per_second, write_rate,
+                    sizeof(write_rate));
+        printf("%-16.16s read %-14s write %-14s\n", report->disks[i].name,
+               read_rate, write_rate);
+    }
+    fputs("\nNETWORK INTERFACES\n", stdout);
+    if (!report->network_available || report->network_interfaces == 0U)
+        fputs("unavailable\n", stdout);
+    for (size_t i = 0U; i < network_returned; i++) {
+        char receive[48];
+        char transmit[48];
+        format_rate(report->interfaces[i].receive_bytes_per_second, receive,
+                    sizeof(receive));
+        format_rate(report->interfaces[i].transmit_bytes_per_second, transmit,
+                    sizeof(transmit));
+        printf("%-16.16s receive %-14s transmit %-14s\n",
+               report->interfaces[i].name, receive, transmit);
+    }
+    printf("\n%sCoverage: logical-cpus=%zu/%zu cpu-truncated=%s disks=%zu/%zu "
+           "disk-skipped=%zu disk-truncated=%s interfaces=%zu/%zu "
+           "net-truncated=%s%s\n", muted(options), cpu_returned,
+           report->cpu_count, report->cpu_truncated ? "true" : "false",
+           disk_returned, report->disk_devices, report->disk_devices_skipped,
+           report->disk_truncated ? "true" : "false", network_returned,
+           report->network_interfaces,
+           report->network_truncated ? "true" : "false", reset(options));
+    fputs("All graphs and rates are bounded local observations; no telemetry is sent.\n",
+          stdout);
+    return ferror(stdout) ? 1 : 0;
+}
+
+static void render_history_json_values(const uint64_t values[MON_HISTORY_SAMPLES],
+                                       const mon_history *history) {
+    fputc('[', stdout);
+    if (history) {
+        for (size_t i = 0U; i < history->count; i++) {
+            if (i > 0U) fputc(',', stdout);
+            printf("%" PRIu64, history_at(values, history, i));
+        }
+    }
+    fputc(']', stdout);
+}
+
+static int render_performance_json(const mon_report *report,
+                                   const mon_options *options) {
+    size_t cpu_budget = 0U, disk_budget = 0U, network_budget = 0U;
+    performance_budgets(options, &cpu_budget, &disk_budget, &network_budget);
+    size_t cpu_returned = report->cpu_count < cpu_budget
+        ? report->cpu_count : cpu_budget;
+    size_t disk_returned = report->disk_devices < disk_budget
+        ? report->disk_devices : disk_budget;
+    size_t network_returned = report->network_interfaces < network_budget
+        ? report->network_interfaces : network_budget;
+    fputs("{\"schema\":\"synapse.monitor.performance/v1\","
+          "\"readOnly\":true,\"view\":\"performance\"", stdout);
+    json_u64("sampledMilliseconds", report->sample_milliseconds, true);
+    printf(",\"cpu\":{\"available\":%s",
+           report->cpu_available ? "true" : "false");
+    render_available_u64("busyPercentMilli", report->cpu_available,
+                         report->cpu_busy_percent_milli, true);
+    json_u64("logicalProcessorCount", report->cpu_count, true);
+    json_u64("logicalProcessorsReturned", cpu_returned, true);
+    printf(",\"truncated\":%s,\"logicalProcessors\":[",
+           report->cpu_truncated ? "true" : "false");
+    for (size_t i = 0U; i < cpu_returned; i++) {
+        if (i > 0U) fputc(',', stdout);
+        if (report->cpu_entry_available[i])
+            printf("%" PRIu64, report->cpu_percent_milli[i]);
+        else fputs("null", stdout);
+    }
+    printf("]},\"memory\":{\"available\":%s",
+           report->memory_available ? "true" : "false");
+    render_available_u64("totalBytes", report->memory_available,
+                         report->memory_total_bytes, true);
+    render_available_u64("availableBytes", report->memory_available,
+                         report->memory_available_bytes, true);
+    render_available_u64("usedBytes", report->memory_available,
+                         report->memory_used_bytes, true);
+    printf("},\"gpu\":{\"available\":%s",
+           report->gpu_available ? "true" : "false");
+    render_available_u64("card", report->gpu_available, report->gpu_card, true);
+    render_available_u64("busyPercentMilli", report->gpu_available,
+                         report->gpu_busy_percent_milli, true);
+    printf(",\"memoryAvailable\":%s",
+           report->gpu_memory_available ? "true" : "false");
+    render_available_u64("memoryUsedBytes", report->gpu_memory_available,
+                         report->gpu_memory_used_bytes, true);
+    render_available_u64("memoryTotalBytes", report->gpu_memory_available,
+                         report->gpu_memory_total_bytes, true);
+    printf("},\"disks\":{\"available\":%s,\"rows\":[",
+           report->disk_available ? "true" : "false");
+    for (size_t i = 0U; i < disk_returned; i++) {
+        if (i > 0U) fputc(',', stdout);
+        fputs("{\"name\":", stdout); json_string(report->disks[i].name);
+        json_u64("readBytesPerSecond",
+                 report->disks[i].read_bytes_per_second, true);
+        json_u64("writeBytesPerSecond",
+                 report->disks[i].write_bytes_per_second, true);
+        fputc('}', stdout);
+    }
+    printf("],\"skipped\":%zu,\"truncated\":%s},"
+           "\"network\":{\"available\":%s,\"rows\":[",
+           report->disk_devices_skipped,
+           report->disk_truncated ? "true" : "false",
+           report->network_available ? "true" : "false");
+    for (size_t i = 0U; i < network_returned; i++) {
+        if (i > 0U) fputc(',', stdout);
+        fputs("{\"name\":", stdout); json_string(report->interfaces[i].name);
+        json_u64("receiveBytesPerSecond",
+                 report->interfaces[i].receive_bytes_per_second, true);
+        json_u64("transmitBytesPerSecond",
+                 report->interfaces[i].transmit_bytes_per_second, true);
+        fputc('}', stdout);
+    }
+    printf("],\"truncated\":%s},\"history\":{\"cpuPercentMilli\":",
+           report->network_truncated ? "true" : "false");
+    render_history_json_values(options->history ? options->history->cpu : NULL,
+                               options->history);
+    fputs(",\"memoryPercentMilli\":", stdout);
+    render_history_json_values(options->history ? options->history->memory : NULL,
+                               options->history);
+    fputs(",\"gpuPercentMilli\":", stdout);
+    render_history_json_values(options->history ? options->history->gpu : NULL,
+                               options->history);
+    fputs(",\"diskBytesPerSecond\":", stdout);
+    render_history_json_values(options->history ? options->history->disk : NULL,
+                               options->history);
+    fputs(",\"networkBytesPerSecond\":", stdout);
+    render_history_json_values(options->history ? options->history->network : NULL,
+                               options->history);
+    fputs("},\"semantics\":{\"ratesAreSampleDeltas\":true,"
+          "\"historyMaximumSamples\":60,\"telemetry\":false}}\n", stdout);
+    return ferror(stdout) ? 1 : 0;
+}
+
 int mon_render_report(const mon_report *report, const mon_options *options) {
     if (!report || !options) return 1;
+    if (options->view == MON_VIEW_PERFORMANCE)
+        return options->format == MON_FORMAT_JSON
+            ? render_performance_json(report, options)
+            : render_performance_text(report, options);
+    if (options->view != MON_VIEW_PROCESSES) return 1;
     return options->format == MON_FORMAT_JSON
         ? render_json(report, options) : render_text(report, options);
 }

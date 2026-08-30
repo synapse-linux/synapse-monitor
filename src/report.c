@@ -170,6 +170,23 @@ int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
         if (report->cpu_busy_percent_milli > 100000U)
             report->cpu_busy_percent_milli = 100000U;
     }
+    report->cpu_count = host_current.cpu_count < MON_MAX_CPUS
+        ? host_current.cpu_count : MON_MAX_CPUS;
+    report->cpu_truncated = host_current.cpu_truncated || host_previous.cpu_truncated;
+    for (size_t i = 0U; i < report->cpu_count; i++) {
+        uint64_t entry_total = difference(host_current.cpus[i].total_ticks,
+                                          host_previous.cpus[i].total_ticks);
+        uint64_t entry_idle = difference(host_current.cpus[i].idle_ticks,
+                                         host_previous.cpus[i].idle_ticks);
+        if (entry_total == 0U) continue;
+        uint64_t entry_busy = entry_idle <= entry_total
+            ? entry_total - entry_idle : 0U;
+        report->cpu_entry_available[i] = true;
+        report->cpu_percent_milli[i] = multiply_divide(entry_busy, 100000U,
+                                                        entry_total);
+        if (report->cpu_percent_milli[i] > 100000U)
+            report->cpu_percent_milli[i] = 100000U;
+    }
 
     report->memory_available = host_current.memory_available;
     report->memory_total_bytes = host_current.memory_total_bytes;
@@ -191,6 +208,28 @@ int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
             difference(host_current.disk_write_sectors,
                        host_previous.disk_write_sectors),
             512000000000U, elapsed_ns);
+        size_t output = 0U;
+        for (size_t i = 0U; i < host_current.disk_devices
+             && output < MON_MAX_BLOCK_DEVICES; i++) {
+            for (size_t j = 0U; j < host_previous.disk_devices; j++) {
+                if (strcmp(host_current.disks[i].name,
+                           host_previous.disks[j].name) != 0) continue;
+                (void)snprintf(report->disks[output].name,
+                               sizeof(report->disks[output].name), "%s",
+                               host_current.disks[i].name);
+                report->disks[output].read_bytes_per_second = multiply_divide(
+                    difference(host_current.disks[i].read_sectors,
+                               host_previous.disks[j].read_sectors),
+                    512000000000U, elapsed_ns);
+                report->disks[output].write_bytes_per_second = multiply_divide(
+                    difference(host_current.disks[i].write_sectors,
+                               host_previous.disks[j].write_sectors),
+                    512000000000U, elapsed_ns);
+                output++;
+                break;
+            }
+        }
+        report->disk_devices = output;
     }
 
     report->network_available = host_current.network_available
@@ -205,6 +244,26 @@ int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
         report->network_tx_bytes_per_second = rate_per_second(
             host_current.network_tx_bytes, host_previous.network_tx_bytes,
             elapsed_ns);
+        size_t output = 0U;
+        for (size_t i = 0U; i < host_current.network_interfaces
+             && output < MON_MAX_INTERFACES; i++) {
+            for (size_t j = 0U; j < host_previous.network_interfaces; j++) {
+                if (strcmp(host_current.interfaces[i].name,
+                           host_previous.interfaces[j].name) != 0) continue;
+                (void)snprintf(report->interfaces[output].name,
+                               sizeof(report->interfaces[output].name), "%s",
+                               host_current.interfaces[i].name);
+                report->interfaces[output].receive_bytes_per_second = rate_per_second(
+                    host_current.interfaces[i].receive_bytes,
+                    host_previous.interfaces[j].receive_bytes, elapsed_ns);
+                report->interfaces[output].transmit_bytes_per_second = rate_per_second(
+                    host_current.interfaces[i].transmit_bytes,
+                    host_previous.interfaces[j].transmit_bytes, elapsed_ns);
+                output++;
+                break;
+            }
+        }
+        report->network_interfaces = output;
     }
 
     report->gpu_available = host_current.gpu_available;
@@ -227,6 +286,29 @@ void mon_report_free(mon_report *report) {
     if (!report) return;
     mon_process_snapshot_free(&report->processes);
     memset(report, 0, sizeof(*report));
+}
+
+void mon_history_update(mon_history *history, const mon_report *report) {
+    if (!history || !report) return;
+    size_t index = history->next;
+    history->cpu[index] = report->cpu_available
+        ? report->cpu_busy_percent_milli : 0U;
+    history->memory[index] = report->memory_available
+        && report->memory_total_bytes > 0U
+        ? multiply_divide(report->memory_used_bytes, 100000U,
+                          report->memory_total_bytes) : 0U;
+    history->gpu[index] = report->gpu_available
+        ? report->gpu_busy_percent_milli : 0U;
+    history->disk[index] = report->disk_read_bytes_per_second
+        > UINT64_MAX - report->disk_write_bytes_per_second
+        ? UINT64_MAX : report->disk_read_bytes_per_second
+          + report->disk_write_bytes_per_second;
+    history->network[index] = report->network_rx_bytes_per_second
+        > UINT64_MAX - report->network_tx_bytes_per_second
+        ? UINT64_MAX : report->network_rx_bytes_per_second
+          + report->network_tx_bytes_per_second;
+    history->next = (index + 1U) % MON_HISTORY_SAMPLES;
+    if (history->count < MON_HISTORY_SAMPLES) history->count++;
 }
 
 static bool ascii_contains_casefold(const char *text, const char *needle) {
@@ -266,6 +348,20 @@ static int compare_metric(const mon_process *left, const mon_process *right) {
             if (compared != 0) return compared;
             break;
         }
+        case MON_SORT_USER:
+            if (left->uid_available != right->uid_available)
+                return left->uid_available ? -1 : 1;
+            if (left->uid < right->uid) return -1;
+            if (left->uid > right->uid) return 1;
+            break;
+        case MON_SORT_STATE:
+            if (left->state < right->state) return -1;
+            if (left->state > right->state) return 1;
+            break;
+        case MON_SORT_THREADS:
+            left_value = left->threads;
+            right_value = right->threads;
+            break;
         case MON_SORT_PID:
             if (left->pid < right->pid) return -1;
             if (left->pid > right->pid) return 1;

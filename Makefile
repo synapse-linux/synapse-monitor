@@ -4,7 +4,7 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share
 BUILD_DIR ?= build
-VERSION := 0.1.0-alpha.1
+VERSION := 0.2.0-alpha.2
 
 BASE_CPPFLAGS = -D_POSIX_C_SOURCE=200809L -D_FORTIFY_SOURCE=3 \
 	-DSYNAPSE_MONITOR_VERSION='"$(VERSION)"'
@@ -21,7 +21,8 @@ CPPFLAGS ?=
 CFLAGS ?=
 LDFLAGS ?=
 LDLIBS ?=
-SOURCES = src/main.c src/cli.c src/probe.c src/report.c src/render.c src/tui.c
+SOURCES = src/main.c src/cli.c src/probe.c src/report.c src/inventory.c \
+	src/render.c src/views.c src/tui.c
 OBJECTS = $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 TARGET = $(BUILD_DIR)/synapse-monitor
 
@@ -51,6 +52,8 @@ install: $(TARGET)
 		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/json-contracts.md"
 	install -D -m 0644 docs/requirements.md \
 		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/requirements.md"
+	install -D -m 0644 docs/view-coverage.md \
+		"$(DESTDIR)$(DATADIR)/doc/synapse-monitor/view-coverage.md"
 	install -D -m 0644 LICENSE "$(DESTDIR)$(DATADIR)/licenses/synapse-monitor/LICENSE"
 
 clean:
