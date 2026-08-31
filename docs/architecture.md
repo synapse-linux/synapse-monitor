@@ -129,21 +129,24 @@ read. Host names, machine IDs and serial-number files are outside the contract.
 
 The core exposes `synapse.monitor.presentation/v1` capability discovery and
 one-view NDJSON streams. It exposes identifiers, units, availability and stable
-row identities but no command templates or visual styling. The Alpha 11 native
+row identities but no command templates or visual styling. The Alpha 12 native
 adapter owns fixed argv, child-process lifetime, framing, exact-major validation,
 line/error caps, sequence checks, identity reconciliation and bounded local row
-presentation. A backend override
+presentation. Native row changes use stable-identity insert/remove signals and
+one atomic layout/data pair for recurring same-cohort reorders; the QML table creates only reusable viewport delegates instead of one
+object tree per validated source row. A backend override
 exists only behind explicit test authority; normal discovery considers the
 sibling and `/usr/bin/synapse-monitor` fixed locations.
 
 QML owns only layout, translated labels, generic typography, color, charts,
 animation and accessibility. The GUI disables process-scoped transparent huge
-pages before Qt initialization and selects Qt Quick's software graphics API before
-creating a window, avoiding a disproportionate renderer/GEM footprint on the
-baseline integrated-GPU target without changing the core observation contract.
+pages before Qt initialization, selects Qt Quick's software graphics API and pins
+Qt Quick Controls Basic before creating a window, avoiding disproportionate
+renderer/GEM and controls-runtime footprints on the baseline integrated-GPU
+target without changing the core observation contract.
 After a real view transition accepts its first frame, the native shell processes
 deferred deletion, collects QML garbage, trims unused component cache entries and
-returns free glibc arenas; rapid superseding transitions cancel stale reclaim work. Locale is fixed before QML loads from the bounded
+returns free glibc arenas; rapid superseding transitions cancel stale reclaim work. Once per 30 accepted frames, a bounded active-view maintenance pass processes deferred deletions, collects QML garbage and trims free allocator arenas without dropping the visible model. Locale is fixed before QML loads from the bounded
 launch option or session locale; QML receives no locale switcher object and the
 window contains no language selector. It receives typed maps/models and never parses JSON
 or constructs a command, argv or executable path. A sortable header emits only
@@ -164,9 +167,15 @@ not grant network authority. The preview keeps `RestrictAddressFamilies=AF_UNIX`
 and `IPAddressDeny=any`, so the GUI and core can use the local Wayland/session
 sockets but cannot open IPv4 or IPv6 traffic.
 
+Routine process-rate sampling reads bounded stat/status/I/O buffers, classifies
+kernel threads from the documented stat flags field and reuses PID/start-tick
+metadata for the second sample. It does not read process command lines. The GUI
+defaults to a 2,000 ms cadence while retaining only the reviewed finite interval
+choices.
+
 ## Authority
 
-Alpha 11 is inspection-only. There is deliberately no signal, kill, dump,
+Alpha 12 is inspection-only. There is deliberately no signal, kill, dump,
 priority, service/startup mutation, connection control, mount, cgroup mutation,
 privileged-helper invocation, subprocess execution, listener or telemetry
 interface. Reading a pre-existing validated root-owned collector cache does not

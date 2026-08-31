@@ -4,7 +4,7 @@ set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
 repo=$(cd "$(dirname "$0")/.." && pwd)
-[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.11' ]]
+[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.12' ]]
 $binary --help | grep -Fq 'The command is read-only'
 $binary describe --format json >"${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
 python3 - "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json" \
@@ -14,7 +14,7 @@ x=json.load(open(sys.argv[1]));schema=json.load(open(sys.argv[2]))
 assert schema['$schema']=='https://json-schema.org/draft/2020-12/schema'
 assert schema['properties']['schema']['const']=='synapse.monitor.presentation/v1'
 assert x['schema']=='synapse.monitor.presentation/v1' and x['readOnly'] is True
-assert x['producer']['version']=='0.5.0-alpha.11'
+assert x['producer']['version']=='0.5.0-alpha.12'
 assert [v['id'] for v in x['views']]==['processes','performance','services','startup','connections','information']
 assert [v['ordinal'] for v in x['views']]==[1,2,3,4,5,6]
 assert x['formats']['stream']['mediaType']=='application/x-ndjson'
@@ -59,7 +59,8 @@ system_uid=65534 if uid==0 else 0
 
 def stat_line(pid,name,state,utime,stime,threads,start,rss):
     f={i:0 for i in range(3,53)}
-    f.update({3:state,14:utime,15:stime,20:threads,22:start,23:1000000,24:rss})
+    flags=0x00200000 if name.startswith('kworker') else 0
+    f.update({3:state,9:flags,14:utime,15:stime,20:threads,22:start,23:1000000,24:rss})
     return f"{pid} ({name}) "+" ".join(str(f[i]) for i in range(3,53))+"\n"
 
 def atomic(path,text,binary=False):
@@ -225,7 +226,8 @@ proc=sys.argv[1]
 def atomic(path,text):
  p=path+'.reset';open(p,'w').write(text);os.replace(p,path)
 def stat_line(pid,name,state,utime,stime,threads,start,rss):
- f={i:0 for i in range(3,53)};f.update({3:state,14:utime,15:stime,20:threads,22:start,23:1000000,24:rss})
+ f={i:0 for i in range(3,53)};flags=0x00200000 if name.startswith('kworker') else 0
+ f.update({3:state,9:flags,14:utime,15:stime,20:threads,22:start,23:1000000,24:rss})
  return f"{pid} ({name}) "+" ".join(str(f[i]) for i in range(3,53))+"\n"
 atomic(proc+'/stat','cpu 100 0 50 850 0 0 0 0 0 0\ncpu0 50 0 25 425 0 0 0 0 0 0\ncpu1 50 0 25 425 0 0 0 0 0 0\n')
 atomic(proc+'/diskstats','8 0 sda 10 0 100 0 20 0 200 0 0 0 0 0 0 0\n')
@@ -247,7 +249,8 @@ proc=sys.argv[1]
 def atomic(path,text):
  p=path+'.next';open(p,'w').write(text);os.replace(p,path)
 def stat_line(pid,name,state,utime,stime,threads,start,rss):
- f={i:0 for i in range(3,53)};f.update({3:state,14:utime,15:stime,20:threads,22:start,23:1000000,24:rss})
+ f={i:0 for i in range(3,53)};flags=0x00200000 if name.startswith('kworker') else 0
+ f.update({3:state,9:flags,14:utime,15:stime,20:threads,22:start,23:1000000,24:rss})
  return f"{pid} ({name}) "+" ".join(str(f[i]) for i in range(3,53))+"\n"
 atomic(proc+'/stat','cpu 120 0 60 920 0 0 0 0 0 0\ncpu0 60 0 30 460 0 0 0 0 0 0\ncpu1 60 0 30 460 0 0 0 0 0 0\n')
 atomic(proc+'/diskstats','8 0 sda 10 0 110 0 20 0 220 0 0 0 0 0 0 0\n')

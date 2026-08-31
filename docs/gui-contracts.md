@@ -1,6 +1,6 @@
 # Graphical presentation contracts
 
-The Alpha 11 graphical shell is a separate, presentation-only consumer. The C17
+The Alpha 12 graphical shell is a separate, presentation-only consumer. The C17
 core owns observation, bounded source selection, privacy and exact-major wire
 contracts. The native Qt adapter owns transport validation, typed models and
 bounded local row presentation. QML owns layout, generic typography, color,
@@ -103,9 +103,12 @@ The adapter must:
 12. stop and surface a bounded generic error if framing or schema validation fails;
 13. terminate its child stream on GUI shutdown or view replacement.
 
-Alpha 11 implements these checks before publishing any frame to QML. It also
+Alpha 12 implements these checks before publishing any frame to QML. It also
 bounds stderr to 32 KiB, capability/inspection documents to 256 KiB, row cohorts
-and filter options to 512, and filter tokens to SHA-256-sized identifiers. Zero
+and filter options to 512, and filter tokens to SHA-256-sized identifiers. Stable
+identities drive incremental membership signals and one atomic layout/data pair
+for recurring same-cohort reorder updates, while a reusable ListView materializes only the visible row band plus a two-row cache;
+512 validated native rows never become 512 simultaneous QML row trees. Zero
 socket inodes are reported as unavailable identity coverage and never enter the
 connection row model.
 

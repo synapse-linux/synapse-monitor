@@ -21,6 +21,7 @@ Rectangle {
     property color mutedColor: "#9aa5ce"
     property color accentColor: "#7aa2f7"
     property int rowHeight: 42
+    readonly property alias instantiatedRowCount: rowList.instantiatedRows
     signal rowActivated(var record)
     signal sortRequested(string sortId)
 
@@ -81,16 +82,20 @@ Rectangle {
     border.width: 1
     clip: true
 
-    ScrollView {
-        id: scroll
+    Flickable {
+        id: horizontalViewport
         anchors.fill: parent
         anchors.margins: 1
         clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        contentWidth: root.totalWidth()
+        contentHeight: height
+        flickableDirection: Flickable.HorizontalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
 
         Column {
             width: root.totalWidth()
+            height: horizontalViewport.height
 
             Rectangle {
                 width: parent.width
@@ -404,15 +409,27 @@ Rectangle {
                 }
             }
 
-            Repeater {
+            ListView {
+                id: rowList
+                property int instantiatedRows: 0
+                objectName: "virtualized-row-list"
+                width: parent.width
+                height: Math.max(0, parent.height - 40)
+                clip: true
                 model: root.tableModel
+                reuseItems: true
+                cacheBuffer: root.rowHeight * 2
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
                 delegate: Rectangle {
                     id: rowDelegate
                     required property var row
                     required property int index
                     property var record: row
-                    width: root.totalWidth()
+                    width: rowList.width
                     height: root.rowHeight
+                    Component.onCompleted: rowList.instantiatedRows += 1
+                    Component.onDestruction: rowList.instantiatedRows -= 1
                     color: rowMouse.containsMouse ? root.hoverColor
                           : (index % 2 ? root.alternateColor : root.surfaceColor)
 
@@ -461,6 +478,23 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    ScrollBar {
+        id: verticalScrollBar
+        anchors.top: root.top
+        anchors.topMargin: 41
+        anchors.right: root.right
+        anchors.bottom: root.bottom
+        orientation: Qt.Vertical
+        size: Math.min(1, rowList.height / Math.max(1, rowList.contentHeight))
+        position: rowList.contentY / Math.max(1, rowList.contentHeight)
+        active: rowList.movingVertically || pressed
+        visible: size < 1
+        onPositionChanged: {
+            if (pressed)
+                rowList.contentY = position * rowList.contentHeight
         }
     }
 }

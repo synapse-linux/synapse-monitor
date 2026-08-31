@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0-alpha.12
+
+- Replace the eager all-row QML repeater with a vertically virtualized, reusable process/inventory row viewport.
+- Reconcile native rows incrementally by stable identity, batching recurring same-cohort reorder/value changes into one layout plus one data signal instead of hundreds of row moves or a whole-model reset.
+- Use a 2,000 ms low-overhead default refresh while retaining the reviewed 500/1,000/2,000/5,000 ms native allowlist.
+- Reuse verified process metadata between the two rate samples, classify kernel threads from the bounded `/proc/PID/stat` flags field, and eliminate command-line reads from routine inventory.
+- Read hot process stat/status/I/O files into bounded stack buffers rather than allocating per file.
+- Select Qt Quick Controls Basic deterministically, retaining the custom Synapse presentation while reducing the controls runtime footprint.
+- Run bounded deferred-delete, QML-GC and allocator maintenance once per 30 accepted frames so temporary frame allocations plateau instead of accumulating until a view change.
+- Add a real-host processes-view CPU/RSS/PSS gate; the previous small-row synthetic cycle is no longer accepted as representative.
+
 ## 0.5.0-alpha.11
 
 - Reclaim destroyed QML view objects after the first accepted frame of each real view transition.

@@ -886,10 +886,123 @@ QHash<int, QByteArray> MonitorRowsModel::roleNames() const {
 }
 
 void MonitorRowsModel::replace(QVariantList rows, QStringList identities) {
-    beginResetModel();
-    rows_ = std::move(rows);
-    identities_ = std::move(identities);
-    endResetModel();
+    if (rows.size() != identities.size()) {
+        beginResetModel();
+        rows_.clear();
+        identities_.clear();
+        endResetModel();
+        return;
+    }
+
+    QSet<QString> targetIdentities;
+    targetIdentities.reserve(identities.size());
+    for (const QString &identity : std::as_const(identities)) {
+        if (identity.isEmpty() || targetIdentities.contains(identity)) {
+            beginResetModel();
+            rows_.clear();
+            identities_.clear();
+            endResetModel();
+            return;
+        }
+        targetIdentities.insert(identity);
+    }
+
+    if (identities_.isEmpty()) {
+        if (rows.isEmpty()) return;
+        beginInsertRows(QModelIndex(), 0, static_cast<int>(rows.size()) - 1);
+        rows_ = std::move(rows);
+        identities_ = std::move(identities);
+        endInsertRows();
+        return;
+    }
+    if (identities.isEmpty()) {
+        beginRemoveRows(QModelIndex(), 0,
+                        static_cast<int>(identities_.size()) - 1);
+        rows_.clear();
+        identities_.clear();
+        endRemoveRows();
+        return;
+    }
+
+    QSet<QString> currentIdentities;
+    currentIdentities.reserve(identities_.size());
+    for (const QString &identity : std::as_const(identities_))
+        currentIdentities.insert(identity);
+    if (currentIdentities == targetIdentities) {
+        const bool orderChanged = identities_ != identities;
+        const bool dataChangedValue = rows_ != rows;
+        if (!orderChanged) {
+            if (!dataChangedValue) return;
+            rows_ = std::move(rows);
+            emit dataChanged(index(0), index(rowCount() - 1), {RowRole});
+            return;
+        }
+
+        const QModelIndexList previousPersistent = persistentIndexList();
+        QModelIndexList replacementPersistent;
+        replacementPersistent.reserve(previousPersistent.size());
+        for (const QModelIndex &persistent : previousPersistent) {
+            const QString identity = identities_.at(persistent.row());
+            replacementPersistent.append(index(identities.indexOf(identity)));
+        }
+        emit layoutAboutToBeChanged({}, QAbstractItemModel::VerticalSortHint);
+        rows_ = std::move(rows);
+        identities_ = std::move(identities);
+        changePersistentIndexList(previousPersistent, replacementPersistent);
+        emit layoutChanged({}, QAbstractItemModel::VerticalSortHint);
+        emit dataChanged(index(0), index(rowCount() - 1), {RowRole});
+        return;
+    }
+
+    for (int index = static_cast<int>(identities_.size()); index > 0; --index) {
+        const int current = index - 1;
+        if (targetIdentities.contains(identities_.at(current))) continue;
+        beginRemoveRows(QModelIndex(), current, current);
+        rows_.removeAt(current);
+        identities_.removeAt(current);
+        endRemoveRows();
+    }
+
+    for (int target = 0; target < static_cast<int>(identities.size()); ++target) {
+        const QString &identity = identities.at(target);
+        if (target >= identities_.size()) {
+            beginInsertRows(QModelIndex(), target, target);
+            identities_.insert(target, identity);
+            rows_.insert(target, rows.at(target));
+            endInsertRows();
+            continue;
+        }
+        if (identities_.at(target) != identity) {
+            const int source = static_cast<int>(
+                identities_.indexOf(identity, target + 1));
+            if (source >= 0) {
+                beginMoveRows(QModelIndex(), source, source, QModelIndex(), target);
+                identities_.move(source, target);
+                rows_.move(source, target);
+                endMoveRows();
+            } else {
+                beginInsertRows(QModelIndex(), target, target);
+                identities_.insert(target, identity);
+                rows_.insert(target, rows.at(target));
+                endInsertRows();
+            }
+        }
+        if (rows_.at(target) != rows.at(target)) {
+            rows_[target] = rows.at(target);
+            emit dataChanged(index(target), index(target), {RowRole});
+        }
+    }
+
+    if (identities_.size() > identities.size()) {
+        const int first = static_cast<int>(identities.size());
+        const int last = static_cast<int>(identities_.size()) - 1;
+        beginRemoveRows(QModelIndex(), first, last);
+        while (identities_.size() > identities.size()) {
+            identities_.removeLast();
+            rows_.removeLast();
+        }
+        endRemoveRows();
+    }
 }
 
 void MonitorRowsModel::clear() { replace({}, {}); }
@@ -964,7 +1077,7 @@ bool MonitorAdapter::initialize(const QString &initialView) {
                            presentation_.rowLimitMaximum);
     sampleMilliseconds_ = std::clamp(250, presentation_.sampleMinimum,
                                      presentation_.sampleMaximum);
-    intervalMilliseconds_ = std::clamp(1000, presentation_.intervalMinimum,
+    intervalMilliseconds_ = std::clamp(2000, presentation_.intervalMinimum,
                                        presentation_.intervalMaximum);
     emit capabilitiesChanged();
     emit selectionChanged();

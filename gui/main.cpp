@@ -15,6 +15,7 @@
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QTimer>
@@ -28,7 +29,7 @@
 #include <sys/prctl.h>
 
 #ifndef SYNAPSE_MONITOR_VERSION
-#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.11"
+#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.12"
 #endif
 
 namespace {
@@ -65,6 +66,7 @@ int main(int argc, char **argv) {
         return 70;
     }
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     QGuiApplication application(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("synapse-monitor-gui"));
@@ -188,7 +190,8 @@ int main(int argc, char **argv) {
         return 3;
     }
     std::fprintf(stderr,
-                 "synapse-monitor-gui: renderer=software transparent-huge-pages=disabled\n");
+                 "synapse-monitor-gui: renderer=software controls=Basic "
+                 "transparent-huge-pages=disabled\n");
 
     const auto reclaimGeneration = std::make_shared<quint64>(0);
     const auto reclaimPending = std::make_shared<bool>(false);
@@ -216,6 +219,22 @@ int main(int argc, char **argv) {
             std::fprintf(stderr,
                          "synapse-monitor-gui: memory-reclaim view=%s allocator=%s\n",
                          view.toUtf8().constData(), trimmed != 0 ? "trimmed" : "stable");
+        });
+    });
+
+    const auto maintenanceFrames = std::make_shared<unsigned>(0U);
+    QObject::connect(&adapter, &MonitorAdapter::frameAccepted, &engine,
+                     [&engine, maintenanceFrames]() {
+        ++(*maintenanceFrames);
+        if (*maintenanceFrames < 30U) return;
+        *maintenanceFrames = 0U;
+        QTimer::singleShot(250, &engine, [&engine]() {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            engine.collectGarbage();
+            const int trimmed = malloc_trim(0);
+            std::fprintf(stderr,
+                         "synapse-monitor-gui: memory-maintenance allocator=%s\n",
+                         trimmed != 0 ? "trimmed" : "stable");
         });
     });
 

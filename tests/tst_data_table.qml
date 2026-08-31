@@ -60,6 +60,11 @@ TestCase {
         }
     }
 
+    ListModel {
+        id: largeRows
+        dynamicRoles: true
+    }
+
     SignalSpy {
         id: sortSpy
         target: table
@@ -90,5 +95,22 @@ TestCase {
         compare(controller.appliedColumn, "name")
         compare(controller.appliedTokens.length, 1)
         compare(controller.appliedTokens[0], tokenA)
+    }
+
+    function test_virtualizesBoundedRealRowCohort() {
+        largeRows.clear()
+        for (let index = 0; index < 512; ++index) {
+            largeRows.append({
+                row: { name: "process-" + index },
+                stableIdentity: "pid/" + index
+            })
+        }
+        table.tableModel = largeRows
+        tryVerify(function() { return table.instantiatedRowCount > 0 })
+        verify(table.instantiatedRowCount <= 20,
+               "viewport created " + table.instantiatedRowCount + " row delegates")
+        compare(largeRows.count, 512)
+        table.tableModel = null
+        tryCompare(table, "instantiatedRowCount", 0)
     }
 }

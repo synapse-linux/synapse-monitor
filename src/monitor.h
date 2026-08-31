@@ -552,6 +552,10 @@ int mon_probe_host(const mon_roots *roots, mon_host_sample *sample,
                    char *error, size_t error_size);
 int mon_probe_processes(const mon_roots *roots, mon_process_snapshot *snapshot,
                         char *error, size_t error_size);
+int mon_probe_processes_with_metadata(const mon_roots *roots,
+                                      const mon_process_snapshot *metadata,
+                                      mon_process_snapshot *snapshot,
+                                      char *error, size_t error_size);
 void mon_process_snapshot_free(mon_process_snapshot *snapshot);
 int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
                        mon_report *report, char *error, size_t error_size);

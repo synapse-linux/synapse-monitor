@@ -1,4 +1,4 @@
-# Alpha 11 requirements
+# Alpha 12 requirements
 
 ## Functional views
 
@@ -54,6 +54,10 @@
 - `MON-069`: disable transparent huge pages for the GUI process before Qt initialization and use the Qt Quick software graphics API, while preserving complete rendering and the native core boundary.
 - `MON-070`: after a completed view transition, reclaim deferred QML objects, collect QML garbage, trim unused components and return free allocator arenas without clearing the accepted frame or delaying a superseding transition.
 - `MON-071`: qualify sustained GUI RSS/PSS after a fixed traversal of all six views; launch-time memory alone is insufficient.
+- `MON-072`: virtualize real table rows so QML delegate count is bounded by the viewport rather than the validated source-row cohort.
+- `MON-073`: reconcile recurring row frames by stable identity without whole-model resets when rows merely update or reorder.
+- `MON-074`: qualify CPU and memory against a real host process cohort; small synthetic fixtures cannot authorize a performance claim.
+- `MON-075`: keep the visible processes view below 4% of one logical CPU and 64 MiB PSS over a sustained 30-second target sample at the default 2,000 ms cadence.
 - `MON-072`: size the active sort indicator from a fixed bounded token width, avoiding any implicit-width binding cycle during table reconstruction.
 
 ## Safety and privacy

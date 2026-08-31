@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.11' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.12' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -33,7 +33,7 @@ for view in processes performance services startup connections information; do
       >"$work/$view.stdout" 2>"$work/$view.stderr"
   test -s "$work/$view.png"
   grep -Fq 'synapse-monitor-gui: typography=monospace resolved=' "$work/$view.stderr"
-  grep -Fq 'synapse-monitor-gui: renderer=software transparent-huge-pages=disabled' "$work/$view.stderr"
+  grep -Fq 'synapse-monitor-gui: renderer=software controls=Basic transparent-huge-pages=disabled' "$work/$view.stderr"
   ! grep -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
     "$work/$view.stderr"
 done
@@ -44,7 +44,7 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software \
     --test-window-size 900x600 --test-grab "$work/sibling-discovery.png" \
     >"$work/sibling-discovery.stdout" 2>"$work/sibling-discovery.stderr"
 test -s "$work/sibling-discovery.png"
-grep -Fq 'synapse-monitor-gui: renderer=software transparent-huge-pages=disabled' \
+grep -Fq 'synapse-monitor-gui: renderer=software controls=Basic transparent-huge-pages=disabled' \
   "$work/sibling-discovery.stderr"
 ! grep -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
   "$work/sibling-discovery.stderr"
@@ -76,6 +76,9 @@ assert 'width: headerCell.selected ? 12 : 0' in header
 assert 'width: headerCell.selected ? implicitWidth : 0' not in header
 assert 'columnFilterOptions' in header and 'setColumnFilter' in header
 assert 'synapse.monitor.filter.select-all' in header
+assert 'id: rowList' in header and 'reuseItems: true' in header
+assert 'cacheBuffer: root.rowHeight * 2' in header
+assert 'Repeater {\n                model: root.tableModel' not in header
 for path in sys.argv[2:4]:
  text=pathlib.Path(path).read_text()
  definitions=[line for line in text.splitlines() if '{ key:' in line]
@@ -112,6 +115,7 @@ PY
 grep -Fq 'synapse.monitor.metric.shared-memory' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
 grep -Fq 'prctl(PR_SET_THP_DISABLE, 1L, 0L, 0L, 0L)' "$repo/gui/main.cpp"
 grep -Fq 'QQuickWindow::setGraphicsApi(QSGRendererInterface::Software)' "$repo/gui/main.cpp"
+grep -Fq 'QQuickStyle::setStyle(QStringLiteral("Basic"))' "$repo/gui/main.cpp"
 grep -Fq 'engine.collectGarbage()' "$repo/gui/main.cpp"
 grep -Fq 'engine.trimComponentCache()' "$repo/gui/main.cpp"
 grep -Fq 'malloc_trim(0)' "$repo/gui/main.cpp"

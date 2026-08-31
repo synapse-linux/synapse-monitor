@@ -1,7 +1,7 @@
 # Informational view coverage
 
 This matrix is the independent first-party completeness gate for the C17
-monitor and its Alpha 11 graphical projection. It names product requirements,
+monitor and its Alpha 12 graphical projection. It names product requirements,
 not external products.
 
 | Area | Alpha 4 content | Safety treatment |
@@ -12,7 +12,7 @@ not external products.
 | Startup Apps | Name, publisher, status, type, semantic location and command identity | Basename only; arguments and full location redacted; no startup mutation |
 | Connections | Protocol, local endpoint, remote endpoint, state, PID and owning process | Host-namespace kernel-table decoding; zero-inode rows reported but omitted from stable GUI identities; IPv4/IPv6 socket families denied; no connection control |
 | Information | OS, kernel, architecture, processor, vendor/model, memory, firmware and uptime | No host name, machine ID or serial number |
-| Filtering | Bounded loaded-row search plus Excel-style value menu on every displayed table column | Search is printable ASCII and 64 bytes; value choices are finite native-generated tokens over at most 512 validated rows |
+| Filtering | Bounded loaded-row search plus Excel-style value menu on every displayed table column | Search is printable ASCII and 64 bytes; value choices are finite native-generated tokens over at most 512 validated rows; QML materializes only reusable viewport delegates |
 | Presentation | Reviewed columns with clickable ascending/descending indicators, continuous sorting, grouping, dense/balanced/wide layout, default/contrast/mono theme | Every visible table column maps to an exact native sort allowlist; local order/filter changes never restart the stream; unavailable values remain last and stable identity breaks ties |
 | Graphical transport | Versioned capability discovery, bounded full-frame NDJSON, stable row identities, nullable history and identity-checked process detail | Native adapter owns fixed argv, child lifetime, 2 MiB cap, exact majors, sequence and identities; QML owns typed visual presentation only |
 | Deep inspection | Numeric Linux credentials, capabilities, seccomp, no-new-privileges, module basenames, descriptor/socket counts | Explicit PID/start ticks through the native adapter; stale response discarded; no module paths, descriptor targets or dumps |

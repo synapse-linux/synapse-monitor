@@ -191,7 +191,7 @@ private:
     qint64 streamSequence_ = -1;
     qint64 inspectionPid_ = 0;
     qint64 inspectionStartTicks_ = 0;
-    int intervalMilliseconds_ = 1000;
+    int intervalMilliseconds_ = 2000;
     int sampleMilliseconds_ = 250;
     int rowLimit_ = 512;
     bool sortAscending_ = true;

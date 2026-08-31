@@ -140,7 +140,9 @@ int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
         return -1;
     }
     if (mon_probe_host(roots, &host_current, error, error_size) != 0
-        || mon_probe_processes(roots, &process_current, error, error_size) != 0) {
+        || mon_probe_processes_with_metadata(roots, &process_previous,
+                                             &process_current,
+                                             error, error_size) != 0) {
         mon_process_snapshot_free(&process_previous);
         mon_process_snapshot_free(&process_current);
         return -1;

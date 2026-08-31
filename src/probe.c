@@ -155,6 +155,52 @@ static char *read_bounded_file(const char *path, size_t limit, size_t *size_out)
     return text;
 }
 
+static int read_bounded_buffer(const char *path, char *buffer, size_t capacity,
+                               size_t *size_out) {
+    if (size_out) *size_out = 0U;
+    if (!path || !buffer || capacity < 2U || capacity > MON_PROCESS_FILE_LIMIT + 1U) {
+        errno = EINVAL;
+        return -1;
+    }
+    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) return -1;
+    const size_t limit = capacity - 1U;
+    size_t used = 0U;
+    while (used < limit) {
+        ssize_t count = read(descriptor, buffer + used, limit - used);
+        if (count > 0) {
+            used += (size_t)count;
+            continue;
+        }
+        if (count == 0) break;
+        if (errno == EINTR) continue;
+        int saved = errno;
+        close(descriptor);
+        errno = saved;
+        return -1;
+    }
+    if (used == limit) {
+        char extra;
+        ssize_t count;
+        do count = read(descriptor, &extra, 1U); while (count < 0 && errno == EINTR);
+        if (count != 0) {
+            int saved = count > 0 ? EFBIG : errno;
+            close(descriptor);
+            errno = saved;
+            return -1;
+        }
+    }
+    if (used >= capacity) {
+        close(descriptor);
+        errno = EOVERFLOW;
+        return -1;
+    }
+    if (close(descriptor) != 0) return -1;
+    buffer[used] = '\0';
+    if (size_out) *size_out = used;
+    return 0;
+}
+
 static bool parse_u64_exact(const char *text, uint64_t *value) {
     if (!text || !*text || !value) return false;
     for (const unsigned char *cursor = (const unsigned char *)text; *cursor; cursor++)
@@ -1426,8 +1472,10 @@ static bool parse_process_stat(char *text, mon_process *process) {
     for (char *token = strtok_r(close_paren + 2, " ", &save); token && count < 32U;
          token = strtok_r(NULL, " ", &save)) tokens[count++] = token;
     if (count < 22U || strlen(tokens[0]) != 1U) return false;
-    uint64_t user_ticks = 0U, system_ticks = 0U, threads = 0U, start = 0U;
-    if (!parse_u64_exact(tokens[11], &user_ticks)
+    uint64_t flags = 0U, user_ticks = 0U, system_ticks = 0U;
+    uint64_t threads = 0U, start = 0U;
+    if (!parse_u64_exact(tokens[6], &flags)
+        || !parse_u64_exact(tokens[11], &user_ticks)
         || !parse_u64_exact(tokens[12], &system_ticks)
         || !parse_u64_exact(tokens[17], &threads)
         || !parse_u64_exact(tokens[19], &start)) return false;
@@ -1438,6 +1486,8 @@ static bool parse_process_stat(char *text, mon_process *process) {
     long page_size = sysconf(_SC_PAGESIZE);
     if (page_size <= 0) return false;
     process->state = tokens[0][0];
+    if ((flags & UINT64_C(0x00200000)) != 0U)
+        process->process_class = MON_CLASS_KERNEL;
     process->threads = threads;
     process->cpu_ticks = add_saturating(user_ticks, system_ticks);
     process->start_ticks = start;
@@ -1447,24 +1497,25 @@ static bool parse_process_stat(char *text, mon_process *process) {
 }
 
 static void probe_process_status(const char *text, mon_process *process) {
-    char *copy = strdup(text);
-    if (!copy) return;
-    char *save = NULL;
-    for (char *line = strtok_r(copy, "\n", &save); line;
-         line = strtok_r(NULL, "\n", &save)) {
-        if (strncmp(line, "Uid:", 4U) != 0) continue;
-        char *cursor = line + 4;
-        while (*cursor == ' ' || *cursor == '\t') cursor++;
-        errno = 0;
-        char *end = NULL;
-        unsigned long value = strtoul(cursor, &end, 10);
-        if (!errno && end != cursor && value <= UINT_MAX) {
-            process->uid_available = true;
-            process->uid = (unsigned)value;
+    const char *line = text;
+    while (line && *line) {
+        const char *newline = strchr(line, '\n');
+        size_t length = newline ? (size_t)(newline - line) : strlen(line);
+        if (length >= 4U && strncmp(line, "Uid:", 4U) == 0) {
+            const char *cursor = line + 4;
+            while (cursor < line + length && (*cursor == ' ' || *cursor == '\t'))
+                cursor++;
+            errno = 0;
+            char *end = NULL;
+            unsigned long value = strtoul(cursor, &end, 10);
+            if (!errno && end != cursor && end <= line + length && value <= UINT_MAX) {
+                process->uid_available = true;
+                process->uid = (unsigned)value;
+            }
+            return;
         }
-        break;
+        line = newline ? newline + 1 : NULL;
     }
-    free(copy);
 }
 
 static bool parse_io_counter(const char *text, const char *key, uint64_t *value) {
@@ -1501,8 +1552,21 @@ static int reserve_process(mon_process_snapshot *snapshot, size_t *capacity) {
     return 0;
 }
 
-int mon_probe_processes(const mon_roots *roots, mon_process_snapshot *snapshot,
-                        char *error, size_t error_size) {
+static const mon_process *find_process_metadata(
+    const mon_process_snapshot *metadata, int pid, uint64_t start_ticks) {
+    if (!metadata) return NULL;
+    for (size_t index = 0U; index < metadata->count; ++index) {
+        const mon_process *process = &metadata->rows[index];
+        if (process->pid == pid && process->start_ticks == start_ticks)
+            return process;
+    }
+    return NULL;
+}
+
+int mon_probe_processes_with_metadata(const mon_roots *roots,
+                                      const mon_process_snapshot *metadata,
+                                      mon_process_snapshot *snapshot,
+                                      char *error, size_t error_size) {
     if (!roots || !snapshot) return -1;
     memset(snapshot, 0, sizeof(*snapshot));
     DIR *directory = opendir(roots->proc_root);
@@ -1530,9 +1594,8 @@ int mon_probe_processes(const mon_roots *roots, mon_process_snapshot *snapshot,
         }
         errno = 0;
         size_t size = 0U;
-        char *stat_text = read_bounded_file(path, 4096U, &size);
-        (void)size;
-        if (!stat_text) {
+        char stat_text[4097U];
+        if (read_bounded_buffer(path, stat_text, sizeof(stat_text), &size) != 0) {
             if (errno == EACCES || errno == EPERM) snapshot->permission_denied++;
             else if (errno == ENOENT || errno == ESRCH) snapshot->vanished++;
             else snapshot->malformed++;
@@ -1542,42 +1605,37 @@ int mon_probe_processes(const mon_roots *roots, mon_process_snapshot *snapshot,
         memset(&process, 0, sizeof(process));
         process.pid = pid;
         if (!parse_process_stat(stat_text, &process)) {
-            free(stat_text);
             snapshot->malformed++;
             continue;
         }
-        free(stat_text);
 
-        written = snprintf(path, sizeof(path), "%s/%d/status", roots->proc_root, pid);
-        if (written >= 0 && (size_t)written < sizeof(path)) {
-            char *status_text = read_bounded_file(path, MON_PROCESS_FILE_LIMIT, &size);
-            if (status_text) {
-                probe_process_status(status_text, &process);
-                free(status_text);
+        const mon_process *metadata_row = find_process_metadata(
+            metadata, process.pid, process.start_ticks);
+        if (metadata_row) {
+            process.uid_available = metadata_row->uid_available;
+            process.uid = metadata_row->uid;
+            process.process_class = metadata_row->process_class;
+        } else {
+            written = snprintf(path, sizeof(path), "%s/%d/status",
+                               roots->proc_root, pid);
+            if (written >= 0 && (size_t)written < sizeof(path)) {
+                char status_text[8193U];
+                if (read_bounded_buffer(path, status_text,
+                                        sizeof(status_text), &size) == 0)
+                    probe_process_status(status_text, &process);
+            }
+            if (process.process_class != MON_CLASS_KERNEL) {
+                if (process.uid_available && process.uid == (unsigned)geteuid())
+                    process.process_class = MON_CLASS_APPLICATION;
+                else process.process_class = MON_CLASS_SYSTEM;
             }
         }
-
-        bool cmdline_known = false;
-        bool cmdline_empty = false;
-        written = snprintf(path, sizeof(path), "%s/%d/cmdline", roots->proc_root, pid);
-        if (written >= 0 && (size_t)written < sizeof(path)) {
-            char *cmdline = read_bounded_file(path, 4096U, &size);
-            if (cmdline) {
-                cmdline_known = true;
-                cmdline_empty = size == 0U;
-                free(cmdline);
-            }
-        }
-        if (cmdline_known && cmdline_empty) process.process_class = MON_CLASS_KERNEL;
-        else if (process.uid_available && process.uid == (unsigned)geteuid())
-            process.process_class = MON_CLASS_APPLICATION;
-        else process.process_class = MON_CLASS_SYSTEM;
 
         written = snprintf(path, sizeof(path), "%s/%d/io", roots->proc_root, pid);
         if (written >= 0 && (size_t)written < sizeof(path)) {
             errno = 0;
-            char *io_text = read_bounded_file(path, MON_PROCESS_FILE_LIMIT, &size);
-            if (io_text) {
+            char io_text[4097U];
+            if (read_bounded_buffer(path, io_text, sizeof(io_text), &size) == 0) {
                 uint64_t read_bytes = 0U, write_bytes = 0U;
                 if (parse_io_counter(io_text, "read_bytes:", &read_bytes)
                     && parse_io_counter(io_text, "write_bytes:", &write_bytes)) {
@@ -1585,7 +1643,6 @@ int mon_probe_processes(const mon_roots *roots, mon_process_snapshot *snapshot,
                     process.read_bytes = read_bytes;
                     process.write_bytes = write_bytes;
                 } else snapshot->io_unavailable++;
-                free(io_text);
             } else snapshot->io_unavailable++;
         } else snapshot->io_unavailable++;
 
@@ -1600,6 +1657,12 @@ int mon_probe_processes(const mon_roots *roots, mon_process_snapshot *snapshot,
     }
     closedir(directory);
     return 0;
+}
+
+int mon_probe_processes(const mon_roots *roots, mon_process_snapshot *snapshot,
+                        char *error, size_t error_size) {
+    return mon_probe_processes_with_metadata(roots, NULL, snapshot,
+                                             error, error_size);
 }
 
 void mon_process_snapshot_free(mon_process_snapshot *snapshot) {

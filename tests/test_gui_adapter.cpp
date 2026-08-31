@@ -433,6 +433,53 @@ private slots:
         QCOMPARE(model.rowCount(), 0);
     }
 
+    void rowsModelReconcilesStableIdentitiesWithoutReset() {
+        MonitorRowsModel model;
+        QSignalSpy resets(&model, &QAbstractItemModel::modelReset);
+        QSignalSpy inserted(&model, &QAbstractItemModel::rowsInserted);
+        QSignalSpy removed(&model, &QAbstractItemModel::rowsRemoved);
+        QSignalSpy moved(&model, &QAbstractItemModel::rowsMoved);
+        QSignalSpy layouts(&model, &QAbstractItemModel::layoutChanged);
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        const auto row = [](const QString &name, int value) {
+            return QVariantMap({{QStringLiteral("name"), name},
+                                {QStringLiteral("value"), value}});
+        };
+
+        model.replace({row(QStringLiteral("alpha"), 1),
+                       row(QStringLiteral("beta"), 2),
+                       row(QStringLiteral("gamma"), 3)},
+                      {QStringLiteral("a"), QStringLiteral("b"),
+                       QStringLiteral("c")});
+        QCOMPARE(inserted.count(), 1);
+        QCOMPARE(resets.count(), 0);
+
+        model.replace({row(QStringLiteral("beta"), 20),
+                       row(QStringLiteral("alpha"), 1),
+                       row(QStringLiteral("gamma"), 3)},
+                      {QStringLiteral("b"), QStringLiteral("a"),
+                       QStringLiteral("c")});
+        QCOMPARE(moved.count(), 0);
+        QCOMPARE(layouts.count(), 1);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(resets.count(), 0);
+        QCOMPARE(model.data(model.index(0), MonitorRowsModel::IdentityRole).toString(),
+                 QStringLiteral("b"));
+        QCOMPARE(model.data(model.index(0), MonitorRowsModel::RowRole).toMap()
+                     .value(QStringLiteral("value")).toInt(), 20);
+
+        model.replace({row(QStringLiteral("beta"), 21),
+                       row(QStringLiteral("delta"), 4)},
+                      {QStringLiteral("b"), QStringLiteral("d")});
+        QVERIFY(removed.count() >= 1);
+        QCOMPARE(inserted.count(), 2);
+        QCOMPARE(changed.count(), 2);
+        QCOMPARE(resets.count(), 0);
+        QCOMPARE(model.rowCount(), 2);
+        QCOMPARE(model.data(model.index(1), MonitorRowsModel::IdentityRole).toString(),
+                 QStringLiteral("d"));
+    }
+
     void oversizedLiveLineTerminatesChild() {
         QTemporaryDir directory;
         const QString backend = fakeBackend(
@@ -551,7 +598,7 @@ private slots:
             frame(QStringLiteral("connections"))).object();
         QVERIFY(!object.isEmpty());
         QJsonObject stream = object.value(QStringLiteral("stream")).toObject();
-        stream.insert(QStringLiteral("intervalMilliseconds"), 1000);
+        stream.insert(QStringLiteral("intervalMilliseconds"), 2000);
         stream.insert(QStringLiteral("sequence"), 0);
         object.insert(QStringLiteral("stream"), stream);
         const auto connection = [](qint64 inode, const QJsonValue &pid,
@@ -622,6 +669,7 @@ private slots:
         QVERIFY(accepted.wait(5000));
         QVERIFY(adapter.ready());
         QVERIFY(adapter.streaming());
+        QCOMPARE(adapter.intervalMilliseconds(), 2000);
         QCOMPARE(adapter.sequence(), qint64(0));
         QVERIFY(adapter.rows()->rowCount() > 0);
         const QVariantMap first = adapter.rows()->data(adapter.rows()->index(0, 0),
