@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0-alpha.9
+
+- Add complete all-process PSS and fresh global i915 GEM into one checked observed-memory footprint, matching the physical accounting review while keeping kernel-used RAM and physical capacity separate.
+- Present the observed footprint in decimal units so the reconciled value is directly legible as approximately 1.2 GB on the target.
+- Label shared GEM as included in the observed total instead of showing the previous over-broad non-additive warning.
+- Keep the observed footprint independently unavailable unless the root-owned collector reports a complete, untruncated, permission-clean PSS scan from the same fresh immutable sample.
+- Add exact arithmetic, accounting-method, overlap and collector-row validation in the native adapter plus hostile duplicate/incomplete PSS fixtures.
+
 ## 0.5.0-alpha.8
 
 - Remove the in-window language selector; the GUI chooses its bounded locale once at launch from `--locale` or the session locale.

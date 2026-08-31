@@ -21,7 +21,7 @@
 #include <memory>
 
 #ifndef SYNAPSE_MONITOR_VERSION
-#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.8"
+#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.9"
 #endif
 
 namespace {

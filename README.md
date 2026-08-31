@@ -4,7 +4,7 @@ Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
 Its C17 core provides a dense terminal interface and versioned JSON contracts
 without requiring a graphical session.
 
-Alpha 8 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. Every visible table column sorts immediately in the validated native model, toggles direction without restarting the stream, and provides a bounded Excel-style value filter. There is no in-window language selector; locale is selected once at launch. GPU memory is always represented with driver-reported, shared or unavailable semantics, and a fresh secure root-owned collector can provide the non-additive global i915 GEM allocation without increasing Monitor privileges. Guarded previews retain host connection tables while denying IPv4/IPv6 socket authority. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
+Alpha 9 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. Every visible table column sorts immediately in the validated native model, toggles direction without restarting the stream, and provides a bounded Excel-style value filter. There is no in-window language selector; locale is selected once at launch. GPU memory is always represented with driver-reported, shared or unavailable semantics. A fresh secure root-owned collector can provide global i915 GEM allocation and complete process-PSS observations without increasing Monitor privileges; the GUI adds those two components into an explicit observed-memory footprint while retaining kernel-used and physical-capacity values separately. Guarded previews retain host connection tables while denying IPv4/IPv6 socket authority. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
 
 1. **Processes** — bounded application, system and kernel groups with CPU,
    memory, I/O, state, thread, PID and user observations.
@@ -104,9 +104,13 @@ existing root-owned `synapse_memory.prom` cache only when it is regular,
 non-writable by group/others, at most 128 KiB, at most 120 seconds old, unchanged
 while read, and contains unique exact metrics. This supplies global GEM allocated
 bytes without elevating Monitor; the total shared pool remains `null` because it
-is not a separate fixed pool. The value is labelled as overlapping system RAM
-and non-additive. If that cache fails validation, use remains unavailable rather
-than being inferred from total RAM or Shmem. Driver-unexposed values remain
+is not a separate fixed pool. When the same cache also proves a complete process
+PSS scan, Monitor reports `observedFootprintBytes = processPssBytes +
+sharedGpuBytes` and presents that accounting total explicitly. The raw kernel
+used-RAM estimate and physical capacity remain separate, and the contract still
+marks possible component overlap rather than claiming extra physical RAM. If
+that cache fails validation, use or the observed footprint remains independently
+unavailable rather than being inferred from total RAM or Shmem. Driver-unexposed values remain
 `null` or `unavailable`, not fabricated zeroes.
 
 The CLI contract remains provisional during Alpha 4, so translated manual pages

@@ -256,6 +256,10 @@ typedef struct {
     bool memory_available;
     uint64_t memory_total_bytes;
     uint64_t memory_available_bytes;
+    bool observed_memory_available;
+    uint64_t process_pss_bytes;
+    uint64_t observed_shared_gpu_bytes;
+    uint64_t observed_memory_bytes;
 
     bool disk_available;
     uint64_t disk_read_sectors;
@@ -356,6 +360,10 @@ typedef struct {
     uint64_t memory_total_bytes;
     uint64_t memory_available_bytes;
     uint64_t memory_used_bytes;
+    bool observed_memory_available;
+    uint64_t process_pss_bytes;
+    uint64_t observed_shared_gpu_bytes;
+    uint64_t observed_memory_bytes;
     bool disk_available;
     uint64_t disk_read_bytes_per_second;
     uint64_t disk_write_bytes_per_second;

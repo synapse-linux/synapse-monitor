@@ -129,7 +129,7 @@ read. Host names, machine IDs and serial-number files are outside the contract.
 
 The core exposes `synapse.monitor.presentation/v1` capability discovery and
 one-view NDJSON streams. It exposes identifiers, units, availability and stable
-row identities but no command templates or visual styling. The Alpha 8 native
+row identities but no command templates or visual styling. The Alpha 9 native
 adapter owns fixed argv, child-process lifetime, framing, exact-major validation,
 line/error caps, sequence checks, identity reconciliation and bounded local row
 presentation. A backend override
@@ -160,7 +160,7 @@ sockets but cannot open IPv4 or IPv6 traffic.
 
 ## Authority
 
-Alpha 8 is inspection-only. There is deliberately no signal, kill, dump,
+Alpha 9 is inspection-only. There is deliberately no signal, kill, dump,
 priority, service/startup mutation, connection control, mount, cgroup mutation,
 privileged-helper invocation, subprocess execution, listener or telemetry
 interface. Reading a pre-existing validated root-owned collector cache does not

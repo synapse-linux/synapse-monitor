@@ -4,7 +4,7 @@ set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
 repo=$(cd "$(dirname "$0")/.." && pwd)
-[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.8' ]]
+[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.9' ]]
 $binary --help | grep -Fq 'The command is read-only'
 $binary describe --format json >"${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
 python3 - "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json" \
@@ -14,7 +14,7 @@ x=json.load(open(sys.argv[1]));schema=json.load(open(sys.argv[2]))
 assert schema['$schema']=='https://json-schema.org/draft/2020-12/schema'
 assert schema['properties']['schema']['const']=='synapse.monitor.presentation/v1'
 assert x['schema']=='synapse.monitor.presentation/v1' and x['readOnly'] is True
-assert x['producer']['version']=='0.5.0-alpha.8'
+assert x['producer']['version']=='0.5.0-alpha.9'
 assert [v['id'] for v in x['views']]==['processes','performance','services','startup','connections','information']
 assert [v['ordinal'] for v in x['views']]==[1,2,3,4,5,6]
 assert x['formats']['stream']['mediaType']=='application/x-ndjson'
@@ -212,6 +212,10 @@ synapse_memory_i915_gem_probe_available 1
 synapse_memory_i915_gem_cached_collector 0
 synapse_memory_i915_gem_bytes 167227392
 synapse_memory_i915_gem_objects 104
+synapse_memory_process_pss_bytes 1000000000
+synapse_memory_processes_permission_denied 0
+synapse_memory_processes_vanished 0
+synapse_memory_process_scan_truncated 0
 EOF
 
 reset_sample() {
@@ -274,7 +278,11 @@ raw=open(sys.argv[1],'rb').read();assert raw.endswith(b'\n') and raw.count(b'\n'
 x=json.loads(raw)
 assert x['schema']=='synapse.monitor.snapshot/v1' and x['readOnly'] is True
 assert x['summary']['cpu']['available'] and x['summary']['cpu']['busyPercentMilli']==30000
-assert x['summary']['memory']=={'available':True,'totalBytes':1024000000,'availableBytes':409600000,'usedBytes':614400000}
+memory=x['summary']['memory']
+assert memory['available'] is True and memory['totalBytes']==1024000000
+assert memory['availableBytes']==409600000 and memory['usedBytes']==614400000
+assert memory['observedFootprintAvailable'] is True
+assert memory['observedFootprintBytes']==1167227392
 assert x['summary']['gpu']['present'] and x['summary']['gpu']['available']
 assert x['summary']['gpu']['busyPercentMilli']==42000
 assert x['summary']['gpu']['memoryKind']=='driver-reported-vram'
@@ -323,6 +331,14 @@ assert intel['memoryTotalBytes'] is None
 assert intel['memorySource']=='root-owned-fresh-collector'
 assert intel['memoryOverlapsSystemRam'] is True
 assert 0 <= intel['memorySampleAgeMilliseconds'] <= 120000
+memory=x['memory']
+assert memory['observedFootprintAvailable'] is True
+assert memory['processPssBytes']==1000000000
+assert memory['sharedGpuBytes']==167227392
+assert memory['observedFootprintBytes']==1167227392
+assert memory['observedFootprintBytes']==memory['processPssBytes']+memory['sharedGpuBytes']
+assert memory['observedFootprintAccounting']=='process-pss-plus-global-i915-gem'
+assert memory['observedFootprintComponentsMayOverlap'] is True
 assert intel['utilizationPercentMilli'] is None and intel['temperatureMillidegreesCelsius'] is None
 classes={r['class'] for r in x['thermals']['temperatures']}
 assert {'cpu-package','cpu-core','gpu','storage'} <= classes
@@ -336,7 +352,9 @@ assert x['thermals']['fanTruncated'] is True
 assert [r['name'] for r in x['disks']['rows']]==['sda']
 assert [r['name'] for r in x['network']['rows']]==['eth0']
 assert x['semantics']['telemetry'] is False
-assert x['semantics']['sharedGpuMemoryNonAdditive'] is True and 'rows' not in x
+assert x['semantics']['sharedGpuMemoryNonAdditive'] is True
+assert x['semantics']['observedFootprintAddsSharedGpu'] is True
+assert x['semantics']['observedFootprintBase']=='process-pss' and 'rows' not in x
 PY
 
 # Shared i915 accounting rejects writable, duplicate, stale and symlink caches.
@@ -358,6 +376,11 @@ assert intel['memoryUsedBytes'] is None and intel['memoryTotalBytes'] is None
 assert intel['memorySource']=='unavailable'
 assert intel['memoryOverlapsSystemRam'] is True
 assert intel['memorySampleAgeMilliseconds'] is None
+memory=x['memory'];assert memory['observedFootprintAvailable'] is False
+assert memory['processPssBytes'] is None and memory['sharedGpuBytes'] is None
+assert memory['observedFootprintBytes'] is None
+assert memory['observedFootprintAccounting'] is None
+assert memory['observedFootprintComponentsMayOverlap'] is None
 PY
 }
 chmod 0666 "$collector"
@@ -406,6 +429,55 @@ rm "$collector"
 mv "$collector.target" "$collector"
 chmod 0644 "$collector"
 touch "$collector"
+
+# PSS completeness fails independently while the valid GEM observation remains.
+assert_observed_accounting_rejected() {
+  local label=$1
+  reset_sample
+  advance &
+  local advance_pid=$!
+  $binary snapshot --view performance --format json --sample-ms 100 \
+    >"$work/accounting-rejected-$label.json"
+  wait "$advance_pid"
+  python3 - "$work/accounting-rejected-$label.json" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1]));intel=next(r for r in x['gpus']['rows'] if r['driver']=='i915')
+assert intel['memoryAvailable'] is True and intel['memoryUsedBytes']==167227392
+m=x['memory'];assert m['observedFootprintAvailable'] is False
+assert m['processPssBytes'] is None and m['sharedGpuBytes'] is None
+assert m['observedFootprintBytes'] is None and m['observedFootprintAccounting'] is None
+PY
+}
+cp "$work/valid-collector.prom" "$collector"
+printf 'synapse_memory_process_pss_bytes 1\n' >>"$collector"
+assert_observed_accounting_rejected duplicate-pss
+cp "$work/valid-collector.prom" "$collector"
+python3 - "$collector" <<'PY'
+import pathlib,sys
+p=pathlib.Path(sys.argv[1]);p.write_text(p.read_text().replace(
+ 'synapse_memory_processes_permission_denied 0',
+ 'synapse_memory_processes_permission_denied 1'))
+PY
+assert_observed_accounting_rejected permission-denied
+cp "$work/valid-collector.prom" "$collector"
+python3 - "$collector" <<'PY'
+import pathlib,sys
+p=pathlib.Path(sys.argv[1]);p.write_text(p.read_text().replace(
+ 'synapse_memory_processes_vanished 0',
+ 'synapse_memory_processes_vanished 1'))
+PY
+assert_observed_accounting_rejected vanished-pss
+cp "$work/valid-collector.prom" "$collector"
+python3 - "$collector" <<'PY'
+import pathlib,sys
+p=pathlib.Path(sys.argv[1]);p.write_text(p.read_text().replace(
+ 'synapse_memory_process_scan_truncated 0',
+ 'synapse_memory_process_scan_truncated 1'))
+PY
+assert_observed_accounting_rejected truncated-pss
+cp "$work/valid-collector.prom" "$collector"
+chmod 0644 "$collector"
+touch "$collector"
 mkdir -p "$sys/class/drm/card2/device"
 printf '0x8086\n' >"$sys/class/drm/card2/device/vendor"
 printf '0x191e\n' >"$sys/class/drm/card2/device/device"
@@ -421,6 +493,8 @@ import json,sys
 x=json.load(open(sys.argv[1]));rows=[r for r in x['gpus']['rows'] if r['driver']=='i915']
 assert len(rows)==2
 assert all(r['memoryAvailable'] is False and r['memorySource']=='unavailable' for r in rows)
+m=x['memory'];assert m['observedFootprintAvailable'] is False
+assert m['observedFootprintBytes'] is None
 PY
 rm -rf "$sys/class/drm/card2"
 

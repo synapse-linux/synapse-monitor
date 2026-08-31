@@ -131,9 +131,20 @@ static void render_summary_text(const mon_report *report) {
             printf("GPU memory %s / %s (card %u)\n", used, total,
                    report->gpu_card);
         } else {
-            printf("GPU memory %s shared GEM, non-additive (card %u)\n", used,
-                   report->gpu_card);
+            printf("GPU memory %s shared GEM, included in observed footprint "
+                   "(card %u)\n", used, report->gpu_card);
         }
+    }
+    if (report->observed_memory_available) {
+        char process_pss[32];
+        char shared_gpu[32];
+        char observed[32];
+        format_iec(report->process_pss_bytes, process_pss, sizeof(process_pss));
+        format_iec(report->observed_shared_gpu_bytes, shared_gpu,
+                   sizeof(shared_gpu));
+        format_iec(report->observed_memory_bytes, observed, sizeof(observed));
+        printf("Observed footprint %s = process PSS %s + shared GPU %s\n",
+               observed, process_pss, shared_gpu);
     }
 }
 
@@ -351,6 +362,24 @@ static void render_gpu_memory_json(const mon_gpu *gpu) {
                          true);
 }
 
+static void render_observed_memory_json(const mon_report *report) {
+    const bool available = report && report->observed_memory_available;
+    printf(",\"observedFootprintAvailable\":%s",
+           available ? "true" : "false");
+    render_available_u64("processPssBytes", available,
+                         available ? report->process_pss_bytes : 0U, true);
+    render_available_u64("sharedGpuBytes", available,
+                         available ? report->observed_shared_gpu_bytes : 0U,
+                         true);
+    render_available_u64("observedFootprintBytes", available,
+                         available ? report->observed_memory_bytes : 0U, true);
+    fputs(",\"observedFootprintAccounting\":", stdout);
+    if (available) json_string("process-pss-plus-global-i915-gem");
+    else fputs("null", stdout);
+    fputs(",\"observedFootprintComponentsMayOverlap\":", stdout);
+    fputs(available ? "true" : "null", stdout);
+}
+
 static int render_json(const mon_report *report, const mon_options *options) {
     size_t returned = rows_returned(report, options);
     fputs("{\"schema\":\"synapse.monitor.snapshot/v1\",\"readOnly\":true,\"view\":\"processes\"", stdout);
@@ -383,6 +412,7 @@ static int render_json(const mon_report *report, const mon_options *options) {
                          report->memory_available_bytes, true);
     render_available_u64("usedBytes", report->memory_available,
                          report->memory_used_bytes, true);
+    render_observed_memory_json(report);
     printf("},\"gpu\":{\"present\":%s,\"available\":%s",
            report->gpu_present ? "true" : "false",
            report->gpu_available ? "true" : "false");
@@ -454,7 +484,8 @@ static int render_json(const mon_report *report, const mon_options *options) {
     fputs("],\"semantics\":{\"processControl\":false,"
           "\"commandLinesExposed\":false,\"pathsExposed\":false,"
           "\"diskSectorBytes\":512,\"ratesAreSampleDeltas\":true,"
-          "\"sharedGpuMemoryNonAdditive\":true}}\n", stdout);
+          "\"sharedGpuMemoryNonAdditive\":true,"
+          "\"observedFootprintAddsSharedGpu\":true}}\n", stdout);
     return ferror(stdout) ? 1 : 0;
 }
 
@@ -835,6 +866,7 @@ static int render_performance_json(const mon_report *report,
                          report->memory_available_bytes, true);
     render_available_u64("usedBytes", report->memory_available,
                          report->memory_used_bytes, true);
+    render_observed_memory_json(report);
     printf("},\"gpu\":{\"present\":%s,\"available\":%s",
            report->gpu_present ? "true" : "false",
            report->gpu_available ? "true" : "false");
@@ -934,6 +966,8 @@ static int render_performance_json(const mon_report *report,
           "\"frequencyUnit\":\"hertz\",\"powerUnit\":\"microwatts\","
           "\"integratedGpuTemperatureInferred\":false,"
           "\"sharedGpuMemoryNonAdditive\":true,"
+          "\"observedFootprintAddsSharedGpu\":true,"
+          "\"observedFootprintBase\":\"process-pss\","
           "\"telemetry\":false}}\n", stdout);
     return ferror(stdout) ? 1 : 0;
 }

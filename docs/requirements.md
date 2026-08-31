@@ -1,4 +1,4 @@
-# Alpha 8 requirements
+# Alpha 9 requirements
 
 ## Functional views
 
@@ -47,7 +47,9 @@
 - `MON-062`: show GPU memory explicitly and distinguish driver-reported counters, integrated shared memory and unavailable use without inference.
 - `MON-063`: preserve selected process identity and inspection payload while rows reorder or filter.
 - `MON-064`: consume i915 shared allocation bytes only from the fixed fresh root-owned collector after bounded ownership, mode, link, size, age, unchanged-read and unique-metric validation; never add privilege to Monitor.
-- `MON-065`: keep shared allocation use and total independently nullable, mark i915 GEM as overlapping system RAM and non-additive, and never substitute total RAM or Shmem for a graphics pool.
+- `MON-065`: keep shared allocation use and total independently nullable, mark i915 GEM as system-RAM-backed, and never substitute total RAM or Shmem for a graphics pool.
+- `MON-066`: when one fresh secure collector proves both a complete process-PSS scan and one unambiguous i915 GEM observation, expose and visibly present the exact checked sum as the observed-memory footprint while retaining kernel-used RAM and physical capacity separately.
+- `MON-067`: mark observed-footprint components as potentially overlapping, reject incomplete PSS scans and fail closed on inconsistent arithmetic.
 
 ## Safety and privacy
 

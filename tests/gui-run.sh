@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.8' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.9' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -89,6 +89,11 @@ assert 'monitorLocalization' not in main
 assert 'synapse.monitor.action.language' not in main
 assert 'model: ["it_IT", "en_US"]' not in main
 PY
+grep -Fq 'root.memory.observedFootprintBytes' "$repo/gui/qml/PerformanceView.qml"
+grep -Fq 'synapse.monitor.metric.memory-observed' "$repo/gui/qml/PerformanceView.qml"
+grep -Fq 'synapse.monitor.memory.pss-plus-gpu' "$repo/gui/qml/PerformanceView.qml"
+! grep -Fq 'non-additive' "$repo/gui/i18n/synapse-monitor_en_US.ts"
+! grep -Fq 'non additiva' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
 
 ! grep -R -n -E '(/usr/bin|/usr/local|QProcess|subprocess|Process\s*\{|argv|system\(|popen\(|shell)' \
   "$repo/gui/qml"

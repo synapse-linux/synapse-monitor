@@ -127,6 +127,14 @@
       <source>synapse.monitor.metric.memory</source>
       <translation>Memoria</translation>
     </message>
+    <message id="synapse.monitor.metric.memory-observed">
+      <source>synapse.monitor.metric.memory-observed</source>
+      <translation>Memoria osservata</translation>
+    </message>
+    <message id="synapse.monitor.memory.pss-plus-gpu">
+      <source>synapse.monitor.memory.pss-plus-gpu</source>
+      <translation>PSS + GPU condivisa</translation>
+    </message>
     <message id="synapse.monitor.metric.gpu">
       <source>synapse.monitor.metric.gpu</source>
       <translation>GPU</translation>
@@ -185,11 +193,11 @@
     </message>
     <message id="synapse.monitor.gpu-memory.shared-measured">
       <source>synapse.monitor.gpu-memory.shared-measured</source>
-      <translation>Allocazioni GEM globali · RAM condivisa · non additiva</translation>
+      <translation>Allocazioni GEM globali · incluse nella memoria osservata</translation>
     </message>
     <message id="synapse.monitor.gpu-memory.shared-kind">
       <source>synapse.monitor.gpu-memory.shared-kind</source>
-      <translation>Memoria di sistema condivisa (non additiva)</translation>
+      <translation>Memoria di sistema condivisa · inclusa nel totale osservato</translation>
     </message>
     <message id="synapse.monitor.gpu-memory.driver-kind">
       <source>synapse.monitor.gpu-memory.driver-kind</source>

@@ -194,6 +194,10 @@ int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
     report->memory_used_bytes = host_current.memory_available_bytes
         <= host_current.memory_total_bytes
         ? host_current.memory_total_bytes - host_current.memory_available_bytes : 0U;
+    report->observed_memory_available = host_current.observed_memory_available;
+    report->process_pss_bytes = host_current.process_pss_bytes;
+    report->observed_shared_gpu_bytes = host_current.observed_shared_gpu_bytes;
+    report->observed_memory_bytes = host_current.observed_memory_bytes;
 
     report->disk_available = host_current.disk_available && host_previous.disk_available;
     report->disk_devices = host_current.disk_devices;

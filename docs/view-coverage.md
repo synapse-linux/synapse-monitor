@@ -1,13 +1,13 @@
 # Informational view coverage
 
 This matrix is the independent first-party completeness gate for the C17
-monitor and its Alpha 8 graphical projection. It names product requirements,
+monitor and its Alpha 9 graphical projection. It names product requirements,
 not external products.
 
 | Area | Alpha 4 content | Safety treatment |
 |---|---|---|
 | Processes | Application/system/kernel groups; name, PID, user, state, threads, CPU, RAM, read and write rates; live totals | PID plus start-time correlation; no command, environment or path |
-| Performance | Aggregate CPU, logical CPUs, RAM, explicit GPU-memory card, bounded GPU inventory and driver-exposed utilization/VRAM/temperature/clocks/power/fan parameters, fresh secure i915 GEM allocation when available, CPU/GPU/storage/battery/system temperatures, general fans, physical disks, network interfaces, 60-sample history | Local bounded counters; driver-reported graphics memory is distinguished from integrated shared allocations; i915 GEM overlaps RAM and is non-additive with no fabricated total; integrated-GPU temperature is never inferred; no telemetry |
+| Performance | Aggregate CPU, logical CPUs, RAM, explicit GPU-memory card, bounded GPU inventory and driver-exposed utilization/VRAM/temperature/clocks/power/fan parameters, fresh secure i915 GEM allocation when available, CPU/GPU/storage/battery/system temperatures, general fans, physical disks, network interfaces, 60-sample history | Local bounded counters; driver-reported graphics memory is distinguished from integrated shared allocations; the observed footprint explicitly adds complete process PSS and fresh i915 GEM while keeping kernel-used RAM and physical capacity separate; no fixed graphics total is fabricated; integrated-GPU temperature is never inferred; no telemetry |
 | Services | Name, description, active state, startup state, PID, user, executable identity | Executable basename only; full path redacted; no service control |
 | Startup Apps | Name, publisher, status, type, semantic location and command identity | Basename only; arguments and full location redacted; no startup mutation |
 | Connections | Protocol, local endpoint, remote endpoint, state, PID and owning process | Host-namespace kernel-table decoding; zero-inode rows reported but omitted from stable GUI identities; IPv4/IPv6 socket families denied; no connection control |

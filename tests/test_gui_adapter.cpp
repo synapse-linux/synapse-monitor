@@ -361,6 +361,48 @@ private slots:
         QCOMPARE(error, QStringLiteral("stream-invalid"));
     }
 
+    void inconsistentObservedFootprintSumFailsClosed() {
+        const MonitorPresentationContract contract = presentation();
+        QJsonObject object = QJsonDocument::fromJson(
+            frame(QStringLiteral("performance"))).object();
+        QJsonObject memory = object.value(QStringLiteral("memory")).toObject();
+        memory.insert(QStringLiteral("observedFootprintAvailable"), true);
+        memory.insert(QStringLiteral("processPssBytes"), 1000);
+        memory.insert(QStringLiteral("sharedGpuBytes"), 200);
+        memory.insert(QStringLiteral("observedFootprintBytes"), 1199);
+        memory.insert(QStringLiteral("observedFootprintAccounting"),
+                      QStringLiteral("process-pss-plus-global-i915-gem"));
+        memory.insert(QStringLiteral("observedFootprintComponentsMayOverlap"), true);
+        object.insert(QStringLiteral("memory"), memory);
+        QVariantMap payload;
+        QVariantList rows;
+        QStringList identities;
+        QString error;
+        QVERIFY(!MonitorContracts::decodeFrame(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), contract,
+            QStringLiteral("performance"), 0, 250, 16,
+            &payload, &rows, &identities, &error));
+        QCOMPARE(error, QStringLiteral("stream-invalid"));
+    }
+
+    void disabledObservedFootprintSemanticsFailsClosed() {
+        const MonitorPresentationContract contract = presentation();
+        QJsonObject object = QJsonDocument::fromJson(
+            frame(QStringLiteral("performance"))).object();
+        QJsonObject semantics = object.value(QStringLiteral("semantics")).toObject();
+        semantics.insert(QStringLiteral("observedFootprintAddsSharedGpu"), false);
+        object.insert(QStringLiteral("semantics"), semantics);
+        QVariantMap payload;
+        QVariantList rows;
+        QStringList identities;
+        QString error;
+        QVERIFY(!MonitorContracts::decodeFrame(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), contract,
+            QStringLiteral("performance"), 0, 250, 16,
+            &payload, &rows, &identities, &error));
+        QCOMPARE(error, QStringLiteral("stream-invalid"));
+    }
+
     void inspectionRevalidatesPidAndStartTicks() {
         const qint64 pid = QCoreApplication::applicationPid();
         const QByteArray wire = run({QStringLiteral("inspect"), QStringLiteral("--pid"),

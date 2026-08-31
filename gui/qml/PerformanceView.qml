@@ -40,6 +40,25 @@ Item {
         while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; ++unit }
         return (unit ? amount.toFixed(1) : amount.toFixed(0)) + " " + units[unit]
     }
+    function decimalBytes(value) {
+        if (value === null || value === undefined) return "—"
+        const units = ["B", "kB", "MB", "GB", "TB"]
+        let amount = Math.max(0, Number(value)); let unit = 0
+        while (amount >= 1000 && unit < units.length - 1) { amount /= 1000; ++unit }
+        return (unit ? amount.toFixed(1) : amount.toFixed(0)) + " " + units[unit]
+    }
+    function observedMemoryValue() {
+        return root.memory.observedFootprintAvailable
+             ? root.decimalBytes(root.memory.observedFootprintBytes)
+             : root.bytes(root.memory.usedBytes)
+    }
+    function observedMemoryDetail() {
+        const available = qsTrId("synapse.monitor.metric.available") + " "
+                        + root.decimalBytes(root.memory.availableBytes)
+        return root.memory.observedFootprintAvailable
+             ? available + " · " + qsTrId("synapse.monitor.memory.pss-plus-gpu")
+             : available
+    }
     function gpuMemoryValue(gpuRow) {
         if (gpuRow.memoryUsedBytes !== null
             && gpuRow.memoryUsedBytes !== undefined)
@@ -132,12 +151,16 @@ Item {
                 }
                 MetricCard {
                     Layout.fillWidth: true
-                    label: qsTrId("synapse.monitor.metric.memory")
-                    value: root.bytes(root.memory.usedBytes)
-                    detail: qsTrId("synapse.monitor.metric.available") + " "
-                            + root.bytes(root.memory.availableBytes)
-                    progress: root.memory.totalBytes ? Number(root.memory.usedBytes)
-                              / Number(root.memory.totalBytes) : -1
+                    label: root.memory.observedFootprintAvailable
+                           ? qsTrId("synapse.monitor.metric.memory-observed")
+                           : qsTrId("synapse.monitor.metric.memory")
+                    value: root.observedMemoryValue()
+                    detail: root.observedMemoryDetail()
+                    progress: root.memory.totalBytes
+                              ? Number(root.memory.observedFootprintAvailable
+                                       ? root.memory.observedFootprintBytes
+                                       : root.memory.usedBytes)
+                                / Number(root.memory.totalBytes) : -1
                     accentColor: root.purpleColor; surfaceColor: root.surfaceColor
                     borderColor: root.borderColor; textColor: root.textColor; mutedColor: root.mutedColor
                 }

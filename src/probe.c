@@ -695,19 +695,37 @@ static bool collector_age_milliseconds(const struct timespec *modified,
     return true;
 }
 
-static bool probe_i915_collector(const mon_roots *roots, mon_gpu *gpu) {
+static bool probe_i915_collector(const mon_roots *roots,
+                                 mon_host_sample *sample, mon_gpu *gpu) {
     struct timespec modified = {0};
     char *text = read_secure_gpu_collector(roots, &modified);
     if (!text) return false;
     uint64_t available = 0U;
     uint64_t bytes = 0U;
     uint64_t objects = 0U;
+    uint64_t process_pss = 0U;
+    uint64_t permission_denied = 0U;
+    uint64_t vanished = 0U;
+    uint64_t scan_truncated = 0U;
+    const uint64_t json_safe_maximum = UINT64_C(9007199254740991);
     bool valid = parse_metric_u64_unique(
                      text, "synapse_memory_i915_gem_probe_available", &available)
         && available == 1U
         && parse_metric_u64_unique(text, "synapse_memory_i915_gem_bytes", &bytes)
         && parse_metric_u64_unique(text, "synapse_memory_i915_gem_objects", &objects)
-        && bytes <= (uint64_t)INT64_MAX;
+        && bytes <= json_safe_maximum;
+    bool accounting_valid = valid
+        && parse_metric_u64_unique(text, "synapse_memory_process_pss_bytes",
+                                   &process_pss)
+        && parse_metric_u64_unique(
+            text, "synapse_memory_processes_permission_denied", &permission_denied)
+        && parse_metric_u64_unique(text, "synapse_memory_processes_vanished",
+                                   &vanished)
+        && parse_metric_u64_unique(
+            text, "synapse_memory_process_scan_truncated", &scan_truncated)
+        && process_pss <= json_safe_maximum && permission_denied == 0U
+        && vanished == 0U && scan_truncated == 0U
+        && process_pss <= json_safe_maximum - bytes;
     free(text);
     uint64_t age = 0U;
     if (!valid || !collector_age_milliseconds(&modified, &age)) return false;
@@ -718,6 +736,12 @@ static bool probe_i915_collector(const mon_roots *roots, mon_gpu *gpu) {
     gpu->memory_from_collector = true;
     gpu->memory_sample_age_available = true;
     gpu->memory_sample_age_milliseconds = age;
+    if (accounting_valid && sample) {
+        sample->observed_memory_available = true;
+        sample->process_pss_bytes = process_pss;
+        sample->observed_shared_gpu_bytes = bytes;
+        sample->observed_memory_bytes = process_pss + bytes;
+    }
     return true;
 }
 
@@ -731,7 +755,7 @@ static void probe_shared_gpu_collector(const mon_roots *roots,
         i915_count++;
     }
     if (i915_count == 1U && candidate && !candidate->memory_available)
-        (void)probe_i915_collector(roots, candidate);
+        (void)probe_i915_collector(roots, sample, candidate);
 }
 
 static void probe_gpu_driver(const mon_roots *roots, mon_gpu *gpu) {

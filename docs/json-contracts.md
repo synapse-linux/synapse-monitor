@@ -64,10 +64,17 @@ zeroes. GPU memory carries `memorySource` as
 used/total bytes, nullable sample age and `memoryOverlapsSystemRam`.
 `memoryKind=shared` describes integrated system-memory allocations without
 claiming a separately measurable total pool. A fresh validated i915 collector
-may provide global GEM allocated bytes while total remains `null`; the value
-overlaps system RAM and is non-additive. A driver-reported VRAM window is not
-claimed to be physically dedicated memory. Integrated-GPU temperature is never
-inferred from CPU-package or thermal zone values.
+may provide global GEM allocated bytes while total remains `null`; the value is
+system-RAM-backed rather than a new physical pool. The `memory` object preserves
+the kernel `usedBytes` estimate and may additionally expose
+`processPssBytes`, `sharedGpuBytes` and `observedFootprintBytes` with
+`observedFootprintAccounting=process-pss-plus-global-i915-gem`. The footprint is
+valid only when the complete process-PSS scan and GEM value come from the same
+fresh secure collector, and it is exactly their checked sum. The contract marks
+`observedFootprintComponentsMayOverlap=true`; this accounting total does not
+increase `totalBytes`. A driver-reported VRAM window is not claimed to be
+physically dedicated memory. Integrated-GPU temperature is never inferred from
+CPU-package or thermal zone values.
 
 `performance/v1` remains a historical Alpha 2 contract; Alpha 3 and later emit v2.
 

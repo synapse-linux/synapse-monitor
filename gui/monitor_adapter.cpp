@@ -229,10 +229,59 @@ bool validGpuMemory(const QJsonObject &gpu, bool present) {
         && ageValue.isNull();
 }
 
+bool validObservedMemory(const QJsonObject &memory) {
+    if (!memory.value(QStringLiteral("available")).isBool()
+        || !memory.value(QStringLiteral("observedFootprintAvailable")).isBool())
+        return false;
+    const bool kernelAvailable = memory.value(QStringLiteral("available")).toBool();
+    qint64 total = 0;
+    qint64 available = 0;
+    qint64 used = 0;
+    if (kernelAvailable) {
+        if (!integerValue(memory.value(QStringLiteral("totalBytes")), 1, &total)
+            || !integerValue(memory.value(QStringLiteral("availableBytes")), 0,
+                             &available)
+            || !integerValue(memory.value(QStringLiteral("usedBytes")), 0, &used)
+            || available > total || used != total - available)
+            return false;
+    } else if (!memory.value(QStringLiteral("totalBytes")).isNull()
+               || !memory.value(QStringLiteral("availableBytes")).isNull()
+               || !memory.value(QStringLiteral("usedBytes")).isNull()) {
+        return false;
+    }
+    const bool observed =
+        memory.value(QStringLiteral("observedFootprintAvailable")).toBool();
+    const QJsonValue pssValue = memory.value(QStringLiteral("processPssBytes"));
+    const QJsonValue gpuValue = memory.value(QStringLiteral("sharedGpuBytes"));
+    const QJsonValue footprintValue =
+        memory.value(QStringLiteral("observedFootprintBytes"));
+    const QJsonValue accountingValue =
+        memory.value(QStringLiteral("observedFootprintAccounting"));
+    const QJsonValue overlapValue =
+        memory.value(QStringLiteral("observedFootprintComponentsMayOverlap"));
+    if (!observed)
+        return pssValue.isNull() && gpuValue.isNull() && footprintValue.isNull()
+            && accountingValue.isNull() && overlapValue.isNull();
+    qint64 pss = 0;
+    qint64 sharedGpu = 0;
+    qint64 footprint = 0;
+    return integerValue(pssValue, 0, &pss)
+        && integerValue(gpuValue, 0, &sharedGpu)
+        && integerValue(footprintValue, 0, &footprint)
+        && pss <= 9007199254740991LL - sharedGpu
+        && footprint == pss + sharedGpu
+        && accountingValue.toString()
+            == QStringLiteral("process-pss-plus-global-i915-gem")
+        && overlapValue.isBool() && overlapValue.toBool();
+}
+
 bool validProcessSummary(const QJsonObject &root) {
     if (!root.value(QStringLiteral("summary")).isObject()) return false;
     const QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
-    if (!summary.value(QStringLiteral("gpu")).isObject()) return false;
+    if (!summary.value(QStringLiteral("gpu")).isObject()
+        || !summary.value(QStringLiteral("memory")).isObject()
+        || !validObservedMemory(summary.value(QStringLiteral("memory")).toObject()))
+        return false;
     const QJsonObject gpu = summary.value(QStringLiteral("gpu")).toObject();
     const bool present = gpu.value(QStringLiteral("present")).toBool(false);
     return gpu.value(QStringLiteral("present")).isBool()
@@ -253,6 +302,7 @@ bool validPerformance(const QJsonObject &root) {
         || !root.value(QStringLiteral("history")).isObject())
         return false;
     const QJsonObject cpu = root.value(QStringLiteral("cpu")).toObject();
+    const QJsonObject memory = root.value(QStringLiteral("memory")).toObject();
     const QJsonObject gpu = root.value(QStringLiteral("gpu")).toObject();
     const QJsonObject gpus = root.value(QStringLiteral("gpus")).toObject();
     const QJsonObject thermals = root.value(QStringLiteral("thermals")).toObject();
@@ -270,7 +320,8 @@ bool validPerformance(const QJsonObject &root) {
         || disks.value(QStringLiteral("rows")).toArray().size() > 128
         || !network.value(QStringLiteral("rows")).isArray()
         || network.value(QStringLiteral("rows")).toArray().size() > 128
-        || gpus.value(QStringLiteral("integratedGpuTemperatureInferred")).toBool(true))
+        || gpus.value(QStringLiteral("integratedGpuTemperatureInferred")).toBool(true)
+        || !validObservedMemory(memory))
         return false;
     const bool gpuPresent = gpu.value(QStringLiteral("present")).toBool(false);
     if (!gpu.value(QStringLiteral("present")).isBool()
@@ -278,6 +329,8 @@ bool validPerformance(const QJsonObject &root) {
         || !optionalInteger(gpu.value(QStringLiteral("card")), 0)
         || !optionalInteger(gpu.value(QStringLiteral("busyPercentMilli")), 0)
         || !validGpuMemory(gpu, gpuPresent)) return false;
+    int collectorRows = 0;
+    qint64 collectorBytes = 0;
     for (const QJsonValue entry : gpus.value(QStringLiteral("rows")).toArray()) {
         if (!entry.isObject()) return false;
         const QJsonObject row = entry.toObject();
@@ -286,6 +339,20 @@ bool validPerformance(const QJsonObject &root) {
             || !optionalInteger(row.value(QStringLiteral("utilizationPercentMilli")), 0)
             || !optionalInteger(row.value(QStringLiteral("temperatureMillidegreesCelsius")),
                                 -1000000))
+            return false;
+        if (row.value(QStringLiteral("memorySource")).toString()
+            == QStringLiteral("root-owned-fresh-collector")) {
+            collectorRows++;
+            if (!integerValue(row.value(QStringLiteral("memoryUsedBytes")), 0,
+                              &collectorBytes))
+                return false;
+        }
+    }
+    if (memory.value(QStringLiteral("observedFootprintAvailable")).toBool()) {
+        qint64 sharedGpu = 0;
+        if (!integerValue(memory.value(QStringLiteral("sharedGpuBytes")), 0,
+                          &sharedGpu)
+            || collectorRows != 1 || sharedGpu != collectorBytes)
             return false;
     }
     return boundedHistory(root.value(QStringLiteral("history")).toObject());
@@ -299,12 +366,18 @@ bool validFrameSemantics(const QJsonObject &root, const QString &view) {
                                     QStringLiteral("commandLinesExposed"),
                                     QStringLiteral("pathsExposed")})
             && semantics.value(QStringLiteral("sharedGpuMemoryNonAdditive"))
+                   .toBool(false)
+            && semantics.value(QStringLiteral("observedFootprintAddsSharedGpu"))
                    .toBool(false);
     if (view == QStringLiteral("performance"))
         return requiredFalse(semantics, {QStringLiteral("integratedGpuTemperatureInferred"),
                                     QStringLiteral("telemetry")})
             && semantics.value(QStringLiteral("sharedGpuMemoryNonAdditive"))
-                   .toBool(false);
+                   .toBool(false)
+            && semantics.value(QStringLiteral("observedFootprintAddsSharedGpu"))
+                   .toBool(false)
+            && semantics.value(QStringLiteral("observedFootprintBase")).toString()
+                   == QStringLiteral("process-pss");
     if (view == QStringLiteral("services"))
         return requiredFalse(semantics, {QStringLiteral("serviceMutation"),
                                     QStringLiteral("pathsExposed"),
