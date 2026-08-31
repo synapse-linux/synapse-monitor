@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0-alpha.10
+
+- Replace the adjacent GPU and GPU-memory summary cards with one unambiguous GPU card.
+- Label utilization and shared-memory values independently inside that card while retaining the full per-device GPU detail section.
+- Disable transparent huge pages before Qt initialization and select the Qt Quick software graphics API to reduce GUI RSS/PSS and avoid adding renderer GEM to the monitored footprint.
+- Preserve additive observed-memory accounting, the absent language selector, native sorting and filters, populated Connections and all read-only authority boundaries.
+
 ## 0.5.0-alpha.9
 
 - Add complete all-process PSS and fresh global i915 GEM into one checked observed-memory footprint, matching the physical accounting review while keeping kernel-used RAM and physical capacity separate.

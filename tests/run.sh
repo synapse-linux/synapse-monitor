@@ -4,7 +4,7 @@ set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
 repo=$(cd "$(dirname "$0")/.." && pwd)
-[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.9' ]]
+[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.10' ]]
 $binary --help | grep -Fq 'The command is read-only'
 $binary describe --format json >"${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
 python3 - "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json" \
@@ -14,7 +14,7 @@ x=json.load(open(sys.argv[1]));schema=json.load(open(sys.argv[2]))
 assert schema['$schema']=='https://json-schema.org/draft/2020-12/schema'
 assert schema['properties']['schema']['const']=='synapse.monitor.presentation/v1'
 assert x['schema']=='synapse.monitor.presentation/v1' and x['readOnly'] is True
-assert x['producer']['version']=='0.5.0-alpha.9'
+assert x['producer']['version']=='0.5.0-alpha.10'
 assert [v['id'] for v in x['views']]==['processes','performance','services','startup','connections','information']
 assert [v['ordinal'] for v in x['views']]==[1,2,3,4,5,6]
 assert x['formats']['stream']['mediaType']=='application/x-ndjson'

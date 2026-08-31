@@ -143,6 +143,10 @@
       <source>synapse.monitor.metric.gpu-memory</source>
       <translation>GPU memory</translation>
     </message>
+    <message id="synapse.monitor.metric.shared-memory">
+      <source>synapse.monitor.metric.shared-memory</source>
+      <translation>Shared memory</translation>
+    </message>
     <message id="synapse.monitor.metric.disk">
       <source>synapse.monitor.metric.disk</source>
       <translation>Disk</translation>

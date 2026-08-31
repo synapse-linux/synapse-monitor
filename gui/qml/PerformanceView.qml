@@ -67,22 +67,12 @@ Item {
             return qsTrId("synapse.monitor.value.shared")
         return qsTrId("synapse.monitor.value.unavailable")
     }
-    function gpuMemoryDetail(gpuRow) {
-        if (gpuRow.memoryKind === "shared"
-            && gpuRow.memoryUsedBytes !== null
-            && gpuRow.memoryUsedBytes !== undefined)
-            return qsTrId("synapse.monitor.gpu-memory.shared-measured")
-        if (gpuRow.memoryUsedBytes !== null
-            && gpuRow.memoryUsedBytes !== undefined
-            && gpuRow.memoryTotalBytes !== null
-            && gpuRow.memoryTotalBytes !== undefined)
-            return root.bytes(gpuRow.memoryTotalBytes) + " · "
-                   + qsTrId("synapse.monitor.gpu-memory.driver-reported")
+    function gpuMemoryLabel(gpuRow) {
         if (gpuRow.memoryKind === "shared")
-            return qsTrId("synapse.monitor.gpu-memory.shared-unavailable")
-        if (root.gpu.present)
-            return qsTrId("synapse.monitor.gpu-memory.unavailable")
-        return qsTrId("synapse.monitor.gpu-memory.no-device")
+            return qsTrId("synapse.monitor.metric.shared-memory")
+        if (gpuRow.memoryKind === "driver-reported-vram")
+            return qsTrId("synapse.monitor.metric.vram")
+        return qsTrId("synapse.monitor.metric.memory")
     }
     function gpuMemoryLine(gpuRow) {
         if (gpuRow.memoryKind === "shared"
@@ -134,7 +124,7 @@ Item {
 
             GridLayout {
                 Layout.fillWidth: true
-                columns: width >= 900 ? 4 : 2
+                columns: width >= 760 ? 3 : 2
                 columnSpacing: 10
                 rowSpacing: 10
 
@@ -164,28 +154,20 @@ Item {
                     accentColor: root.purpleColor; surfaceColor: root.surfaceColor
                     borderColor: root.borderColor; textColor: root.textColor; mutedColor: root.mutedColor
                 }
-                MetricCard {
+                GpuSummaryCard {
                     Layout.fillWidth: true
                     label: qsTrId("synapse.monitor.metric.gpu")
-                    value: root.percent(root.gpu.busyPercentMilli)
-                    detail: root.gpu.present ? qsTrId("synapse.monitor.status.detected")
-                                             : qsTrId("synapse.monitor.value.unavailable")
+                    utilizationLabel: qsTrId("synapse.monitor.metric.utilization")
+                    utilizationValue: root.percent(root.gpu.busyPercentMilli)
+                    memoryLabel: root.gpuMemoryLabel(root.primaryGpu)
+                    memoryValue: root.gpuMemoryValue(root.primaryGpu)
+                    detail: root.primaryGpu.model
+                            || (root.gpu.present
+                                ? qsTrId("synapse.monitor.status.detected")
+                                : qsTrId("synapse.monitor.value.unavailable"))
                     progress: root.gpu.busyPercentMilli === null
                               || root.gpu.busyPercentMilli === undefined ? -1
                               : Number(root.gpu.busyPercentMilli) / 100000
-                    accentColor: root.greenColor; surfaceColor: root.surfaceColor
-                    borderColor: root.borderColor; textColor: root.textColor; mutedColor: root.mutedColor
-                }
-                MetricCard {
-                    Layout.fillWidth: true
-                    label: qsTrId("synapse.monitor.metric.gpu-memory")
-                    value: root.gpuMemoryValue(root.primaryGpu)
-                    detail: root.gpuMemoryDetail(root.primaryGpu)
-                    progress: root.primaryGpu.memoryTotalBytes
-                              && root.primaryGpu.memoryUsedBytes !== null
-                              && root.primaryGpu.memoryUsedBytes !== undefined
-                              ? Number(root.primaryGpu.memoryUsedBytes)
-                                / Number(root.primaryGpu.memoryTotalBytes) : -1
                     accentColor: root.greenColor; surfaceColor: root.surfaceColor
                     borderColor: root.borderColor; textColor: root.textColor; mutedColor: root.mutedColor
                 }

@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.9' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.10' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -33,6 +33,7 @@ for view in processes performance services startup connections information; do
       >"$work/$view.stdout" 2>"$work/$view.stderr"
   test -s "$work/$view.png"
   grep -Fq 'synapse-monitor-gui: typography=monospace resolved=' "$work/$view.stderr"
+  grep -Fq 'synapse-monitor-gui: renderer=software transparent-huge-pages=disabled' "$work/$view.stderr"
   ! grep -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
     "$work/$view.stderr"
 done
@@ -43,6 +44,8 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software \
     --test-window-size 900x600 --test-grab "$work/sibling-discovery.png" \
     >"$work/sibling-discovery.stdout" 2>"$work/sibling-discovery.stderr"
 test -s "$work/sibling-discovery.png"
+grep -Fq 'synapse-monitor-gui: renderer=software transparent-huge-pages=disabled' \
+  "$work/sibling-discovery.stderr"
 ! grep -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
   "$work/sibling-discovery.stderr"
 
@@ -92,6 +95,21 @@ PY
 grep -Fq 'root.memory.observedFootprintBytes' "$repo/gui/qml/PerformanceView.qml"
 grep -Fq 'synapse.monitor.metric.memory-observed' "$repo/gui/qml/PerformanceView.qml"
 grep -Fq 'synapse.monitor.memory.pss-plus-gpu' "$repo/gui/qml/PerformanceView.qml"
+python3 - "$repo/gui/qml/PerformanceView.qml" "$repo/gui/qml/ProcessesView.qml" \
+  "$repo/gui/qml/GpuSummaryCard.qml" <<'PY'
+import pathlib,sys
+for path in sys.argv[1:3]:
+ text=pathlib.Path(path).read_text()
+ assert text.count('GpuSummaryCard {')==1, path
+ assert 'utilizationLabel:' in text and 'memoryLabel:' in text, path
+ assert 'label: qsTrId("synapse.monitor.metric.gpu-memory")' not in text, path
+card=pathlib.Path(sys.argv[3]).read_text()
+assert 'gpuSummaryUtilizationValue' in card
+assert 'gpuSummaryMemoryValue' in card
+PY
+grep -Fq 'synapse.monitor.metric.shared-memory' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
+grep -Fq 'prctl(PR_SET_THP_DISABLE, 1L, 0L, 0L, 0L)' "$repo/gui/main.cpp"
+grep -Fq 'QQuickWindow::setGraphicsApi(QSGRendererInterface::Software)' "$repo/gui/main.cpp"
 ! grep -Fq 'non-additive' "$repo/gui/i18n/synapse-monitor_en_US.ts"
 ! grep -Fq 'non additiva' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
 

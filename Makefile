@@ -5,7 +5,7 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share
 BUILD_DIR ?= build
-VERSION := 0.5.0-alpha.9
+VERSION := 0.5.0-alpha.10
 
 BASE_CPPFLAGS = -D_POSIX_C_SOURCE=200809L -D_FORTIFY_SOURCE=3 \
 	-DSYNAPSE_MONITOR_VERSION='"$(VERSION)"'
@@ -58,7 +58,7 @@ GUI_BINARY = $(BUILD_DIR)/synapse-monitor-gui
 GUI_SOURCES = gui/main.cpp gui/monitor_adapter.cpp gui/localization.cpp gui/typography.cpp
 GUI_HEADERS = gui/monitor_adapter.h gui/localization.h gui/typography.h
 GUI_MOC = $(BUILD_DIR)/moc_monitor_adapter.cpp $(BUILD_DIR)/moc_localization.cpp
-GUI_QML = gui/qml/Main.qml gui/qml/MetricCard.qml gui/qml/Sparkline.qml \
+GUI_QML = gui/qml/Main.qml gui/qml/MetricCard.qml gui/qml/GpuSummaryCard.qml gui/qml/Sparkline.qml \
 	gui/qml/SynapseComboBox.qml gui/qml/DataTable.qml gui/qml/ProcessesView.qml gui/qml/PerformanceView.qml \
 	gui/qml/InventoryView.qml gui/qml/InformationView.qml gui/qml/ProcessInspector.qml
 GUI_QM = $(BUILD_DIR)/i18n/synapse-monitor_en_US.qm \
@@ -107,6 +107,7 @@ $(GUI_QRC_FILE): $(GUI_QML) $(GUI_QM) | $(BUILD_DIR)
 	printf '%s\n' '<!DOCTYPE RCC><RCC version="1.0"><qresource prefix="/">' \
 		'<file alias="qml/Main.qml">$(abspath gui/qml/Main.qml)</file>' \
 		'<file alias="qml/MetricCard.qml">$(abspath gui/qml/MetricCard.qml)</file>' \
+		'<file alias="qml/GpuSummaryCard.qml">$(abspath gui/qml/GpuSummaryCard.qml)</file>' \
 		'<file alias="qml/Sparkline.qml">$(abspath gui/qml/Sparkline.qml)</file>' \
 		'<file alias="qml/SynapseComboBox.qml">$(abspath gui/qml/SynapseComboBox.qml)</file>' \
 		'<file alias="qml/DataTable.qml">$(abspath gui/qml/DataTable.qml)</file>' \

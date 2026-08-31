@@ -1,6 +1,6 @@
 # Graphical presentation contracts
 
-The Alpha 9 graphical shell is a separate, presentation-only consumer. The C17
+The Alpha 10 graphical shell is a separate, presentation-only consumer. The C17
 core owns observation, bounded source selection, privacy and exact-major wire
 contracts. The native Qt adapter owns transport validation, typed models and
 bounded local row presentation. QML owns layout, generic typography, color,
@@ -103,14 +103,16 @@ The adapter must:
 12. stop and surface a bounded generic error if framing or schema validation fails;
 13. terminate its child stream on GUI shutdown or view replacement.
 
-Alpha 9 implements these checks before publishing any frame to QML. It also
+Alpha 10 implements these checks before publishing any frame to QML. It also
 bounds stderr to 32 KiB, capability/inspection documents to 256 KiB, row cohorts
 and filter options to 512, and filter tokens to SHA-256-sized identifiers. Zero
 socket inodes are reported as unavailable identity coverage and never enter the
 connection row model.
 
-GPU memory is never omitted from the top-level presentation. Driver sysfs used
-and total counters are labelled as driver-reported graphics memory. An i915 GPU
+GPU memory is never omitted from the top-level presentation. One GPU summary
+card labels utilization and memory as separate values rather than presenting
+adjacent GPU and GPU-memory cards. Driver sysfs used and total counters are
+labelled as driver-reported graphics memory. An i915 GPU
 may instead expose numeric global GEM allocated bytes from the existing bounded,
 fresh, root-owned collector cache. Its fixed pool total remains `null` and
 `memoryOverlapsSystemRam` is true; it is never called dedicated VRAM. If the

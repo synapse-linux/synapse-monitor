@@ -15,13 +15,18 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QTimer>
 
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 
+#include <sys/prctl.h>
+
 #ifndef SYNAPSE_MONITOR_VERSION
-#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.9"
+#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.10"
 #endif
 
 namespace {
@@ -51,6 +56,14 @@ bool parseWindowSize(const QString &value, QSize *size) {
 } // namespace
 
 int main(int argc, char **argv) {
+    if (prctl(PR_SET_THP_DISABLE, 1L, 0L, 0L, 0L) != 0) {
+        const int error = errno;
+        std::fprintf(stderr, "synapse-monitor-gui: PR_SET_THP_DISABLE failed: %s\n",
+                     std::strerror(error));
+        return 70;
+    }
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+
     QGuiApplication application(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("synapse-monitor-gui"));
     QCoreApplication::setApplicationVersion(QStringLiteral(SYNAPSE_MONITOR_VERSION));
@@ -161,6 +174,12 @@ int main(int argc, char **argv) {
 
     QQuickWindow *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
     if (!window) return 3;
+    if (window->rendererInterface()->graphicsApi() != QSGRendererInterface::Software) {
+        qCritical("synapse-monitor-gui: software renderer unavailable");
+        return 3;
+    }
+    std::fprintf(stderr,
+                 "synapse-monitor-gui: renderer=software transparent-huge-pages=disabled\n");
     if (testSize.isValid()) {
         window->setWidth(testSize.width());
         window->setHeight(testSize.height());

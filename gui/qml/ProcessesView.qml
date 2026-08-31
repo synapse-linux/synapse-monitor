@@ -43,19 +43,12 @@ Item {
             return qsTrId("synapse.monitor.value.shared")
         return qsTrId("synapse.monitor.value.unavailable")
     }
-    function gpuMemoryDetail() {
-        if (!root.gpu.present)
-            return qsTrId("synapse.monitor.gpu-memory.no-device")
-        if (root.gpu.memoryKind === "shared" && root.gpu.memoryAvailable)
-            return qsTrId("synapse.monitor.gpu-memory.shared-measured")
-        if (root.gpu.memoryAvailable && root.gpu.memoryTotalBytes !== null
-            && root.gpu.memoryTotalBytes !== undefined)
-            return qsTrId("synapse.monitor.metric.of") + " "
-                   + root.bytes(root.gpu.memoryTotalBytes) + " · "
-                   + qsTrId("synapse.monitor.gpu-memory.driver-reported")
+    function gpuMemoryLabel() {
         if (root.gpu.memoryKind === "shared")
-            return qsTrId("synapse.monitor.gpu-memory.shared-unavailable")
-        return qsTrId("synapse.monitor.gpu-memory.unavailable")
+            return qsTrId("synapse.monitor.metric.shared-memory")
+        if (root.gpu.memoryKind === "driver-reported-vram")
+            return qsTrId("synapse.monitor.metric.vram")
+        return qsTrId("synapse.monitor.metric.memory")
     }
     function identifierLabel(identifier) {
         return qsTrId("synapse.monitor.id." + identifier)
@@ -88,7 +81,7 @@ Item {
 
         GridLayout {
             Layout.fillWidth: true
-            columns: width >= 1120 ? 6 : (width >= 650 ? 3 : 2)
+            columns: width >= 1120 ? 5 : (width >= 650 ? 3 : 2)
             columnSpacing: 10
             rowSpacing: 10
 
@@ -110,27 +103,21 @@ Item {
                 accentColor: root.purpleColor; surfaceColor: root.surfaceColor; borderColor: root.borderColor
                 textColor: root.textColor; mutedColor: root.mutedColor
             }
-            MetricCard {
+            GpuSummaryCard {
                 Layout.fillWidth: true
                 label: qsTrId("synapse.monitor.metric.gpu")
-                value: root.percent(root.gpu.busyPercentMilli)
+                utilizationLabel: qsTrId("synapse.monitor.metric.utilization")
+                utilizationValue: root.percent(root.gpu.busyPercentMilli)
+                memoryLabel: root.gpuMemoryLabel()
+                memoryValue: root.gpuMemoryValue()
                 detail: root.gpu.present ? qsTrId("synapse.monitor.status.detected")
                                          : qsTrId("synapse.monitor.value.unavailable")
-                progress: root.gpu.busyPercentMilli === null || root.gpu.busyPercentMilli === undefined
-                          ? -1 : Number(root.gpu.busyPercentMilli) / 100000
-                accentColor: root.greenColor; surfaceColor: root.surfaceColor; borderColor: root.borderColor
-                textColor: root.textColor; mutedColor: root.mutedColor
-            }
-            MetricCard {
-                Layout.fillWidth: true
-                label: qsTrId("synapse.monitor.metric.gpu-memory")
-                value: root.gpuMemoryValue()
-                detail: root.gpuMemoryDetail()
-                progress: root.gpu.memoryAvailable && root.gpu.memoryTotalBytes
-                          ? Number(root.gpu.memoryUsedBytes)
-                            / Number(root.gpu.memoryTotalBytes) : -1
-                accentColor: root.greenColor; surfaceColor: root.surfaceColor; borderColor: root.borderColor
-                textColor: root.textColor; mutedColor: root.mutedColor
+                progress: root.gpu.busyPercentMilli === null
+                          || root.gpu.busyPercentMilli === undefined ? -1
+                          : Number(root.gpu.busyPercentMilli) / 100000
+                accentColor: root.greenColor; surfaceColor: root.surfaceColor
+                borderColor: root.borderColor; textColor: root.textColor
+                mutedColor: root.mutedColor
             }
             MetricCard {
                 Layout.fillWidth: true
