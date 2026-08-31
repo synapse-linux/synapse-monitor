@@ -49,8 +49,14 @@ Item {
         return qsTrId("synapse.monitor.value.unavailable")
     }
     function gpuMemoryDetail(gpuRow) {
-        if (gpuRow.memoryUsedBytes !== null
+        if (gpuRow.memoryKind === "shared"
+            && gpuRow.memoryUsedBytes !== null
             && gpuRow.memoryUsedBytes !== undefined)
+            return qsTrId("synapse.monitor.gpu-memory.shared-measured")
+        if (gpuRow.memoryUsedBytes !== null
+            && gpuRow.memoryUsedBytes !== undefined
+            && gpuRow.memoryTotalBytes !== null
+            && gpuRow.memoryTotalBytes !== undefined)
             return root.bytes(gpuRow.memoryTotalBytes) + " · "
                    + qsTrId("synapse.monitor.gpu-memory.driver-reported")
         if (gpuRow.memoryKind === "shared")
@@ -60,8 +66,15 @@ Item {
         return qsTrId("synapse.monitor.gpu-memory.no-device")
     }
     function gpuMemoryLine(gpuRow) {
-        if (gpuRow.memoryUsedBytes !== null
+        if (gpuRow.memoryKind === "shared"
+            && gpuRow.memoryUsedBytes !== null
             && gpuRow.memoryUsedBytes !== undefined)
+            return root.bytes(gpuRow.memoryUsedBytes) + " · "
+                   + qsTrId("synapse.monitor.value.shared")
+        if (gpuRow.memoryUsedBytes !== null
+            && gpuRow.memoryUsedBytes !== undefined
+            && gpuRow.memoryTotalBytes !== null
+            && gpuRow.memoryTotalBytes !== undefined)
             return root.bytes(gpuRow.memoryUsedBytes) + " / "
                    + root.bytes(gpuRow.memoryTotalBytes)
         if (gpuRow.memoryKind === "shared")

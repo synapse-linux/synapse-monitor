@@ -46,7 +46,10 @@ Item {
     function gpuMemoryDetail() {
         if (!root.gpu.present)
             return qsTrId("synapse.monitor.gpu-memory.no-device")
-        if (root.gpu.memoryAvailable)
+        if (root.gpu.memoryKind === "shared" && root.gpu.memoryAvailable)
+            return qsTrId("synapse.monitor.gpu-memory.shared-measured")
+        if (root.gpu.memoryAvailable && root.gpu.memoryTotalBytes !== null
+            && root.gpu.memoryTotalBytes !== undefined)
             return qsTrId("synapse.monitor.metric.of") + " "
                    + root.bytes(root.gpu.memoryTotalBytes) + " · "
                    + qsTrId("synapse.monitor.gpu-memory.driver-reported")

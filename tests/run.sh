@@ -4,7 +4,7 @@ set -euo pipefail
 export LC_ALL=C
 binary=${1:?binary required}
 repo=$(cd "$(dirname "$0")/.." && pwd)
-[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.7' ]]
+[[ $($binary --version) == 'synapse-monitor 0.5.0-alpha.8' ]]
 $binary --help | grep -Fq 'The command is read-only'
 $binary describe --format json >"${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json"
 python3 - "${TMPDIR:-/tmp}/synapse-monitor-presentation-$$.json" \
@@ -14,7 +14,7 @@ x=json.load(open(sys.argv[1]));schema=json.load(open(sys.argv[2]))
 assert schema['$schema']=='https://json-schema.org/draft/2020-12/schema'
 assert schema['properties']['schema']['const']=='synapse.monitor.presentation/v1'
 assert x['schema']=='synapse.monitor.presentation/v1' and x['readOnly'] is True
-assert x['producer']['version']=='0.5.0-alpha.7'
+assert x['producer']['version']=='0.5.0-alpha.8'
 assert [v['id'] for v in x['views']]==['processes','performance','services','startup','connections','information']
 assert [v['ordinal'] for v in x['views']]==[1,2,3,4,5,6]
 assert x['formats']['stream']['mediaType']=='application/x-ndjson'
@@ -22,6 +22,8 @@ assert x['formats']['stream']['maximumLineBytes']==2*1024*1024
 assert x['history']['unavailableSample'] is None
 assert x['history']['measuredZeroDistinctFromUnavailable'] is True
 assert x['localization']['humanLabelsOwnedByGui'] is True
+assert x['localization']['runtimeSelector'] is False
+assert x['localization']['selection']=='launch-or-session'
 assert not any(x['authority'].values()) and not any(x['privacy'].values())
 assert 'command' not in x['formats']['stream'] and 'argv' not in x['formats']['stream']
 PY
@@ -35,6 +37,7 @@ sys=$root/sys
 etc=$root/etc
 usr=$root/usr
 run=$root/run
+var=$root/var
 home=$root/home
 mkdir -p "$proc/net" "$proc/sys/kernel" "$sys/class/block/sda/device" \
   "$sys/class/drm/card0/device/hwmon/hwmon1" \
@@ -45,6 +48,7 @@ mkdir -p "$proc/net" "$proc/sys/kernel" "$sys/class/block/sda/device" \
   "$sys/fs/cgroup/system.slice/demo.service" \
   "$etc/systemd/system/multi-user.target.wants" \
   "$usr/lib/systemd/system" "$usr/share/hwdata" "$run/systemd/system" \
+  "$var/lib/node_exporter/textfile_collector" \
   "$etc/xdg/autostart" "$home/.config/autostart"
 
 python3 - "$proc" "$sys" <<'PY'
@@ -201,6 +205,14 @@ printf 'Firmware Vendor\n' >"$sys/class/dmi/id/bios_vendor"
 printf '1.2.3\n' >"$sys/class/dmi/id/bios_version"
 printf '08/30/2026\n' >"$sys/class/dmi/id/bios_date"
 printf '1002  Advanced Micro Devices, Inc.\n\t9999  Test Graphics Adapter\n8086  Intel Corporation\n\t191e  Skylake-Y GT2 [HD Graphics 515]\n' >"$usr/share/hwdata/pci.ids"
+cat >"$var/lib/node_exporter/textfile_collector/synapse_memory.prom" <<'EOF'
+# HELP synapse_memory_i915_gem_probe_available Whether global i915 GEM was readable.
+# TYPE synapse_memory_i915_gem_probe_available gauge
+synapse_memory_i915_gem_probe_available 1
+synapse_memory_i915_gem_cached_collector 0
+synapse_memory_i915_gem_bytes 167227392
+synapse_memory_i915_gem_objects 104
+EOF
 
 reset_sample() {
   python3 - "$proc" <<'PY'
@@ -251,6 +263,7 @@ export SYNAPSE_MONITOR_SYS_ROOT=$sys
 export SYNAPSE_MONITOR_ETC_ROOT=$etc
 export SYNAPSE_MONITOR_USR_ROOT=$usr
 export SYNAPSE_MONITOR_RUN_ROOT=$run
+export SYNAPSE_MONITOR_VAR_ROOT=$var
 export SYNAPSE_MONITOR_HOME_ROOT=$home
 advance &
 $binary snapshot --format json --sample-ms 100 --limit 6 >"$work/snapshot.json"
@@ -265,6 +278,9 @@ assert x['summary']['memory']=={'available':True,'totalBytes':1024000000,'availa
 assert x['summary']['gpu']['present'] and x['summary']['gpu']['available']
 assert x['summary']['gpu']['busyPercentMilli']==42000
 assert x['summary']['gpu']['memoryKind']=='driver-reported-vram'
+assert x['summary']['gpu']['memorySource']=='driver-sysfs'
+assert x['summary']['gpu']['memoryOverlapsSystemRam'] is None
+assert x['summary']['gpu']['memorySampleAgeMilliseconds'] is None
 assert x['summary']['disk']['available'] and x['summary']['disk']['readBytesPerSecond']>0 and x['summary']['disk']['writeBytesPerSecond']>0
 assert x['summary']['network']['available'] and x['summary']['network']['receiveBytesPerSecond']>0
 assert x['coverage']['rowsObserved']==3 and x['coverage']['rowsMatched']==3 and x['coverage']['malformed']==1
@@ -302,6 +318,11 @@ assert amd['powerMicrowatts']==32000000 and amd['powerCapMicrowatts']==45000000
 assert amd['fanRpm']==1800 and amd['memoryKind']=='driver-reported-vram'
 assert intel['vendor']=='Intel' and intel['driver']=='i915' and intel['memoryKind']=='shared'
 assert intel['model']=='Skylake-Y GT2 [HD Graphics 515]'
+assert intel['memoryAvailable'] is True and intel['memoryUsedBytes']==167227392
+assert intel['memoryTotalBytes'] is None
+assert intel['memorySource']=='root-owned-fresh-collector'
+assert intel['memoryOverlapsSystemRam'] is True
+assert 0 <= intel['memorySampleAgeMilliseconds'] <= 120000
 assert intel['utilizationPercentMilli'] is None and intel['temperatureMillidegreesCelsius'] is None
 classes={r['class'] for r in x['thermals']['temperatures']}
 assert {'cpu-package','cpu-core','gpu','storage'} <= classes
@@ -314,8 +335,94 @@ assert x['thermals']['malformed']>=1 and x['thermals']['temperatureTruncated'] i
 assert x['thermals']['fanTruncated'] is True
 assert [r['name'] for r in x['disks']['rows']]==['sda']
 assert [r['name'] for r in x['network']['rows']]==['eth0']
-assert x['semantics']['telemetry'] is False and 'rows' not in x
+assert x['semantics']['telemetry'] is False
+assert x['semantics']['sharedGpuMemoryNonAdditive'] is True and 'rows' not in x
 PY
+
+# Shared i915 accounting rejects writable, duplicate, stale and symlink caches.
+collector="$var/lib/node_exporter/textfile_collector/synapse_memory.prom"
+cp "$collector" "$work/valid-collector.prom"
+assert_i915_collector_rejected() {
+  local label=$1
+  reset_sample
+  advance &
+  local advance_pid=$!
+  $binary snapshot --view performance --format json --sample-ms 100 \
+    >"$work/rejected-$label.json"
+  wait "$advance_pid"
+  python3 - "$work/rejected-$label.json" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1]));intel=next(r for r in x['gpus']['rows'] if r['driver']=='i915')
+assert intel['memoryKind']=='shared' and intel['memoryAvailable'] is False
+assert intel['memoryUsedBytes'] is None and intel['memoryTotalBytes'] is None
+assert intel['memorySource']=='unavailable'
+assert intel['memoryOverlapsSystemRam'] is True
+assert intel['memorySampleAgeMilliseconds'] is None
+PY
+}
+chmod 0666 "$collector"
+assert_i915_collector_rejected writable
+cp "$work/valid-collector.prom" "$collector"
+chmod 0644 "$collector"
+printf 'synapse_memory_i915_gem_bytes 1\n' >>"$collector"
+assert_i915_collector_rejected duplicate
+cp "$work/valid-collector.prom" "$collector"
+chmod 0644 "$collector"
+python3 - "$collector" <<'PY'
+import pathlib,sys
+path=pathlib.Path(sys.argv[1]);path.write_bytes(path.read_bytes()+b'\0synapse_memory_i915_gem_bytes 1\n')
+PY
+assert_i915_collector_rejected embedded-nul
+python3 - "$collector" <<'PY'
+import pathlib,sys
+pathlib.Path(sys.argv[1]).write_bytes(b'x'*(128*1024+1))
+PY
+assert_i915_collector_rejected oversized
+cp "$work/valid-collector.prom" "$collector"
+chmod 0644 "$collector"
+ln "$collector" "$collector.hardlink"
+assert_i915_collector_rejected hardlink
+rm "$collector.hardlink"
+python3 - "$collector" <<'PY'
+import os,sys,time
+future=time.time()+1
+os.utime(sys.argv[1],(future,future))
+PY
+assert_i915_collector_rejected future
+cp "$work/valid-collector.prom" "$collector"
+chmod 0644 "$collector"
+python3 - "$collector" <<'PY'
+import os,sys,time
+stale=time.time()-121
+os.utime(sys.argv[1],(stale,stale))
+PY
+assert_i915_collector_rejected stale
+cp "$work/valid-collector.prom" "$collector"
+chmod 0644 "$collector"
+mv "$collector" "$collector.target"
+ln -s "$collector.target" "$collector"
+assert_i915_collector_rejected symlink
+rm "$collector"
+mv "$collector.target" "$collector"
+chmod 0644 "$collector"
+touch "$collector"
+mkdir -p "$sys/class/drm/card2/device"
+printf '0x8086\n' >"$sys/class/drm/card2/device/vendor"
+printf '0x191e\n' >"$sys/class/drm/card2/device/device"
+printf 'DRIVER=i915\nPCI_ID=8086:191E\n' >"$sys/class/drm/card2/device/uevent"
+reset_sample
+advance &
+advance_pid=$!
+$binary snapshot --view performance --format json --sample-ms 100 \
+  >"$work/ambiguous-i915.json"
+wait "$advance_pid"
+python3 - "$work/ambiguous-i915.json" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1]));rows=[r for r in x['gpus']['rows'] if r['driver']=='i915']
+assert len(rows)==2
+assert all(r['memoryAvailable'] is False and r['memorySource']=='unavailable' for r in rows)
+PY
+rm -rf "$sys/class/drm/card2"
 
 # Every view can be delivered as one bounded full-frame NDJSON object.
 for view in processes performance services startup connections information; do

@@ -41,6 +41,8 @@
 #define MON_CONNECTION_FILE_LIMIT ((size_t)512U * 1024U)
 #define MON_MAPS_FILE_LIMIT ((size_t)2U * 1024U * 1024U)
 #define MON_PCI_IDS_LIMIT ((size_t)4U * 1024U * 1024U)
+#define MON_COLLECTOR_FILE_LIMIT ((size_t)128U * 1024U)
+#define MON_COLLECTOR_MAX_AGE_SECONDS 120U
 #define MON_SAMPLE_MIN_MS 100U
 #define MON_SAMPLE_MAX_MS 2000U
 #define MON_INTERVAL_MIN_MS 250U
@@ -162,6 +164,7 @@ typedef struct {
     const char *etc_root;
     const char *usr_root;
     const char *run_root;
+    const char *var_root;
     const char *home_root;
 } mon_roots;
 
@@ -202,7 +205,11 @@ typedef struct {
     uint64_t utilization_percent_milli;
     bool memory_available;
     uint64_t memory_used_bytes;
+    bool memory_total_available;
     uint64_t memory_total_bytes;
+    bool memory_from_collector;
+    bool memory_sample_age_available;
+    uint64_t memory_sample_age_milliseconds;
     bool temperature_available;
     int64_t temperature_millidegrees_celsius;
     char temperature_label[MON_SENSOR_LABEL_MAX + 1U];
@@ -271,6 +278,7 @@ typedef struct {
     uint64_t gpu_busy_percent_milli;
     bool gpu_memory_available;
     uint64_t gpu_memory_used_bytes;
+    bool gpu_memory_total_available;
     uint64_t gpu_memory_total_bytes;
     mon_gpu gpus[MON_MAX_GPUS];
     size_t gpu_count;
@@ -367,6 +375,7 @@ typedef struct {
     uint64_t gpu_busy_percent_milli;
     bool gpu_memory_available;
     uint64_t gpu_memory_used_bytes;
+    bool gpu_memory_total_available;
     uint64_t gpu_memory_total_bytes;
     mon_gpu gpus[MON_MAX_GPUS];
     size_t gpu_count;

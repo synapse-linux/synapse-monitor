@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0-alpha.8
+
+- Remove the in-window language selector; the GUI chooses its bounded locale once at launch from `--locale` or the session locale.
+- Measure i915 shared graphics allocations through the existing fresh root-owned `synapse_memory.prom` collector without granting the Monitor process additional privilege.
+- Accept the collector only when it is a single regular non-writable file owned by the required authority, no larger than 128 KiB, no older than 120 seconds, unchanged while read and contains unique exact integer metrics.
+- Report shared i915 GEM allocation bytes independently from the unavailable total pool, label them as overlapping system RAM and explicitly non-additive.
+- Add typed `memorySource`, `memoryOverlapsSystemRam` and nullable sample-age fields; reject inconsistent or unapproved combinations in the native GUI adapter.
+- Add normal and hostile collector fixtures covering writable files, duplicate metrics, stale data and symlinks, plus GUI contract tests for inconsistent shared-memory claims.
+
 ## 0.5.0-alpha.7
 
 - Keep the validated frame and table visible while changing presentation order; header sorting is now an immediate native-model transform with no child restart, loading overlay or stream-sequence flash.

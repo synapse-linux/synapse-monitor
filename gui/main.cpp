@@ -21,7 +21,7 @@
 #include <memory>
 
 #ifndef SYNAPSE_MONITOR_VERSION
-#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.7"
+#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.8"
 #endif
 
 namespace {
@@ -145,7 +145,6 @@ int main(int argc, char **argv) {
     }
 
     QQmlApplicationEngine engine;
-    localization.attachEngine(&engine);
     QObject::connect(&engine, &QQmlApplicationEngine::warnings, &application,
                      [](const QList<QQmlError> &warnings) {
         for (const QQmlError &warning : warnings)
@@ -153,8 +152,6 @@ int main(int argc, char **argv) {
                          warning.toString().toUtf8().constData());
     });
     engine.rootContext()->setContextProperty(QStringLiteral("monitorAdapter"), &adapter);
-    engine.rootContext()->setContextProperty(QStringLiteral("monitorLocalization"),
-                                             &localization);
     if (!QFile::exists(QStringLiteral(":/qml/Main.qml"))) {
         qCritical("synapse-monitor-gui: embedded QML unavailable");
         return 3;

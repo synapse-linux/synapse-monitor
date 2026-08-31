@@ -62,6 +62,7 @@ int mon_roots_from_environment(mon_roots *roots, char *error, size_t error_size)
     roots->etc_root = "/etc";
     roots->usr_root = "/usr";
     roots->run_root = "/run";
+    roots->var_root = "/var";
     roots->home_root = "/";
     struct passwd password;
     struct passwd *result = NULL;
@@ -81,6 +82,8 @@ int mon_roots_from_environment(mon_roots *roots, char *error, size_t error_size)
         || apply_optional_root("SYNAPSE_MONITOR_USR_ROOT", &roots->usr_root,
                                error, error_size) != 0
         || apply_optional_root("SYNAPSE_MONITOR_RUN_ROOT", &roots->run_root,
+                               error, error_size) != 0
+        || apply_optional_root("SYNAPSE_MONITOR_VAR_ROOT", &roots->var_root,
                                error, error_size) != 0
         || apply_optional_root("SYNAPSE_MONITOR_HOME_ROOT", &roots->home_root,
                                error, error_size) != 0) return -1;
@@ -572,6 +575,165 @@ static bool read_gpu_hwmon_i64(const mon_roots *roots, unsigned card,
         && read_sysfs_i64(path, minimum, maximum, value);
 }
 
+static bool parse_metric_u64_unique(const char *text, const char *name,
+                                    uint64_t *value) {
+    if (!text || !name || !*name || !value) return false;
+    const size_t name_length = strlen(name);
+    const char *cursor = text;
+    size_t matches = 0U;
+    uint64_t parsed_value = 0U;
+    while (*cursor) {
+        const char *line_end = strchr(cursor, '\n');
+        if (!line_end) line_end = cursor + strlen(cursor);
+        if ((size_t)(line_end - cursor) > name_length
+            && strncmp(cursor, name, name_length) == 0
+            && (cursor[name_length] == ' ' || cursor[name_length] == '\t')) {
+            if (++matches != 1U) return false;
+            const char *number = cursor + name_length;
+            while (number < line_end && (*number == ' ' || *number == '\t'))
+                number++;
+            if (number == line_end || !isdigit((unsigned char)*number)) return false;
+            errno = 0;
+            char *end = NULL;
+            unsigned long long parsed = strtoull(number, &end, 10);
+            if (errno || end == number || end > line_end) return false;
+            while (end < line_end
+                   && (*end == ' ' || *end == '\t' || *end == '\r')) end++;
+            if (end != line_end) return false;
+            parsed_value = (uint64_t)parsed;
+        }
+        cursor = *line_end ? line_end + 1U : line_end;
+    }
+    if (matches != 1U) return false;
+    *value = parsed_value;
+    return true;
+}
+
+static char *read_secure_gpu_collector(const mon_roots *roots,
+                                       struct timespec *modified) {
+    char path[MON_PATH_MAX];
+    if (!roots || join_path(path, sizeof(path), roots->var_root,
+                            "/lib/node_exporter/textfile_collector/"
+                            "synapse_memory.prom") != 0) return NULL;
+    const uid_t required_owner = strcmp(roots->var_root, "/var") == 0
+        ? (uid_t)0U : geteuid();
+    struct stat before;
+    if (lstat(path, &before) != 0 || !S_ISREG(before.st_mode)
+        || before.st_uid != required_owner || before.st_nlink != 1
+        || (before.st_mode & (S_IWGRP | S_IWOTH)) != 0
+        || before.st_size <= 0
+        || (uint64_t)before.st_size > MON_COLLECTOR_FILE_LIMIT) return NULL;
+    int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) return NULL;
+    struct stat opened;
+    if (fstat(descriptor, &opened) != 0 || !S_ISREG(opened.st_mode)
+        || opened.st_uid != required_owner || opened.st_nlink != 1
+        || (opened.st_mode & (S_IWGRP | S_IWOTH)) != 0
+        || opened.st_dev != before.st_dev || opened.st_ino != before.st_ino
+        || opened.st_size != before.st_size
+        || opened.st_mtim.tv_sec != before.st_mtim.tv_sec
+        || opened.st_mtim.tv_nsec != before.st_mtim.tv_nsec) {
+        (void)close(descriptor);
+        return NULL;
+    }
+    const size_t length = (size_t)opened.st_size;
+    char *text = malloc(length + 1U);
+    if (!text) {
+        (void)close(descriptor);
+        return NULL;
+    }
+    size_t offset = 0U;
+    while (offset < length) {
+        ssize_t count = read(descriptor, text + offset, length - offset);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) {
+            free(text);
+            (void)close(descriptor);
+            return NULL;
+        }
+        offset += (size_t)count;
+    }
+    char extra;
+    ssize_t extra_count;
+    do extra_count = read(descriptor, &extra, 1U);
+    while (extra_count < 0 && errno == EINTR);
+    struct stat completed;
+    bool unchanged = extra_count == 0 && fstat(descriptor, &completed) == 0
+        && completed.st_dev == opened.st_dev && completed.st_ino == opened.st_ino
+        && completed.st_size == opened.st_size
+        && completed.st_mtim.tv_sec == opened.st_mtim.tv_sec
+        && completed.st_mtim.tv_nsec == opened.st_mtim.tv_nsec;
+    (void)close(descriptor);
+    if (!unchanged || memchr(text, '\0', length) != NULL) {
+        free(text);
+        return NULL;
+    }
+    text[length] = '\0';
+    if (modified) *modified = opened.st_mtim;
+    return text;
+}
+
+static bool collector_age_milliseconds(const struct timespec *modified,
+                                        uint64_t *age_milliseconds) {
+    if (!modified || !age_milliseconds) return false;
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0
+        || modified->tv_sec > now.tv_sec
+        || (modified->tv_sec == now.tv_sec
+            && modified->tv_nsec > now.tv_nsec)) return false;
+    time_t seconds = now.tv_sec - modified->tv_sec;
+    long nanoseconds = now.tv_nsec - modified->tv_nsec;
+    if (nanoseconds < 0) {
+        seconds--;
+        nanoseconds += 1000000000L;
+    }
+    if (seconds < 0) return false;
+    uint64_t age = multiply_saturating((uint64_t)seconds, 1000U);
+    age = add_saturating(age, (uint64_t)nanoseconds / 1000000U);
+    if (age > (uint64_t)MON_COLLECTOR_MAX_AGE_SECONDS * 1000U) return false;
+    *age_milliseconds = age;
+    return true;
+}
+
+static bool probe_i915_collector(const mon_roots *roots, mon_gpu *gpu) {
+    struct timespec modified = {0};
+    char *text = read_secure_gpu_collector(roots, &modified);
+    if (!text) return false;
+    uint64_t available = 0U;
+    uint64_t bytes = 0U;
+    uint64_t objects = 0U;
+    bool valid = parse_metric_u64_unique(
+                     text, "synapse_memory_i915_gem_probe_available", &available)
+        && available == 1U
+        && parse_metric_u64_unique(text, "synapse_memory_i915_gem_bytes", &bytes)
+        && parse_metric_u64_unique(text, "synapse_memory_i915_gem_objects", &objects)
+        && bytes <= (uint64_t)INT64_MAX;
+    free(text);
+    uint64_t age = 0U;
+    if (!valid || !collector_age_milliseconds(&modified, &age)) return false;
+    (void)objects;
+    gpu->memory_available = true;
+    gpu->memory_used_bytes = bytes;
+    gpu->memory_total_available = false;
+    gpu->memory_from_collector = true;
+    gpu->memory_sample_age_available = true;
+    gpu->memory_sample_age_milliseconds = age;
+    return true;
+}
+
+static void probe_shared_gpu_collector(const mon_roots *roots,
+                                       mon_host_sample *sample) {
+    mon_gpu *candidate = NULL;
+    size_t i915_count = 0U;
+    for (size_t index = 0U; index < sample->gpu_count; index++) {
+        if (strcmp(sample->gpus[index].driver, "i915") != 0) continue;
+        candidate = &sample->gpus[index];
+        i915_count++;
+    }
+    if (i915_count == 1U && candidate && !candidate->memory_available)
+        (void)probe_i915_collector(roots, candidate);
+}
+
 static void probe_gpu_driver(const mon_roots *roots, mon_gpu *gpu) {
     char path[MON_PATH_MAX];
     if (make_gpu_path(roots, path, sizeof(path), gpu->card, "uevent") != 0) return;
@@ -717,6 +879,7 @@ static void probe_one_gpu(const mon_roots *roots, mon_gpu *gpu) {
         && read_gpu_u64(roots, gpu->card, "mem_info_vram_used", UINT64_MAX, &used)
         && total > 0U) {
         gpu->memory_available = true;
+        gpu->memory_total_available = true;
         gpu->memory_total_bytes = total;
         gpu->memory_used_bytes = used <= total ? used : total;
     }
@@ -918,6 +1081,7 @@ static void probe_gpu(const mon_roots *roots, mon_host_sample *sample) {
         probe_one_gpu(roots, gpu);
     }
     probe_gpu_models(roots, sample);
+    probe_shared_gpu_collector(roots, sample);
     char overflow_suffix[128];
     char overflow_path[MON_PATH_MAX];
     int overflow_written = snprintf(overflow_suffix, sizeof(overflow_suffix),
@@ -944,6 +1108,7 @@ static void probe_gpu(const mon_roots *roots, mon_host_sample *sample) {
     sample->gpu_busy_percent_milli = gpu->utilization_percent_milli;
     sample->gpu_memory_available = gpu->memory_available;
     sample->gpu_memory_used_bytes = gpu->memory_used_bytes;
+    sample->gpu_memory_total_available = gpu->memory_total_available;
     sample->gpu_memory_total_bytes = gpu->memory_total_bytes;
 }
 

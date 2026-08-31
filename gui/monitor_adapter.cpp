@@ -189,26 +189,57 @@ bool uniqueRows(const QJsonArray &rows, const QString &view, int rowLimit,
     return true;
 }
 
+bool validGpuMemory(const QJsonObject &gpu, bool present) {
+    const QJsonValue kindValue = gpu.value(QStringLiteral("memoryKind"));
+    const QJsonValue sourceValue = gpu.value(QStringLiteral("memorySource"));
+    const QJsonValue usedValue = gpu.value(QStringLiteral("memoryUsedBytes"));
+    const QJsonValue totalValue = gpu.value(QStringLiteral("memoryTotalBytes"));
+    const QJsonValue overlapValue =
+        gpu.value(QStringLiteral("memoryOverlapsSystemRam"));
+    const QJsonValue ageValue =
+        gpu.value(QStringLiteral("memorySampleAgeMilliseconds"));
+    if (!gpu.value(QStringLiteral("memoryAvailable")).isBool()) return false;
+    const bool available = gpu.value(QStringLiteral("memoryAvailable")).toBool();
+    if (!present)
+        return !available && kindValue.isNull() && sourceValue.isNull()
+            && usedValue.isNull() && totalValue.isNull() && overlapValue.isNull()
+            && ageValue.isNull();
+    const QStringList kinds = {QStringLiteral("shared"),
+                               QStringLiteral("driver-reported-vram"),
+                               QStringLiteral("unavailable")};
+    const QStringList sources = {QStringLiteral("root-owned-fresh-collector"),
+                                 QStringLiteral("driver-sysfs"),
+                                 QStringLiteral("unavailable")};
+    if (!kindValue.isString() || !kinds.contains(kindValue.toString())
+        || !sourceValue.isString() || !sources.contains(sourceValue.toString())
+        || !optionalInteger(usedValue, 0) || !optionalInteger(totalValue, 0)
+        || !optionalInteger(ageValue, 0)) return false;
+    const QString kind = kindValue.toString();
+    const QString source = sourceValue.toString();
+    const bool shared = kind == QStringLiteral("shared");
+    if ((shared && (!overlapValue.isBool() || !overlapValue.toBool()))
+        || (!shared && !overlapValue.isNull())) return false;
+    if (source == QStringLiteral("root-owned-fresh-collector"))
+        return shared && available && usedValue.isDouble() && totalValue.isNull()
+            && ageValue.isDouble();
+    if (source == QStringLiteral("driver-sysfs"))
+        return available && usedValue.isDouble() && totalValue.isDouble()
+            && ageValue.isNull();
+    return !available && usedValue.isNull() && totalValue.isNull()
+        && ageValue.isNull();
+}
+
 bool validProcessSummary(const QJsonObject &root) {
     if (!root.value(QStringLiteral("summary")).isObject()) return false;
     const QJsonObject summary = root.value(QStringLiteral("summary")).toObject();
     if (!summary.value(QStringLiteral("gpu")).isObject()) return false;
     const QJsonObject gpu = summary.value(QStringLiteral("gpu")).toObject();
     const bool present = gpu.value(QStringLiteral("present")).toBool(false);
-    const QJsonValue memoryKind = gpu.value(QStringLiteral("memoryKind"));
-    const QStringList memoryKinds = {QStringLiteral("shared"),
-                                     QStringLiteral("driver-reported-vram"),
-                                     QStringLiteral("unavailable")};
     return gpu.value(QStringLiteral("present")).isBool()
         && gpu.value(QStringLiteral("available")).isBool()
-        && gpu.value(QStringLiteral("memoryAvailable")).isBool()
-        && ((!present && memoryKind.isNull())
-            || (present && memoryKind.isString()
-                && memoryKinds.contains(memoryKind.toString())))
         && optionalInteger(gpu.value(QStringLiteral("card")), 0)
         && optionalInteger(gpu.value(QStringLiteral("busyPercentMilli")), 0)
-        && optionalInteger(gpu.value(QStringLiteral("memoryUsedBytes")), 0)
-        && optionalInteger(gpu.value(QStringLiteral("memoryTotalBytes")), 0);
+        && validGpuMemory(gpu, present);
 }
 
 bool validPerformance(const QJsonObject &root) {
@@ -241,31 +272,18 @@ bool validPerformance(const QJsonObject &root) {
         || network.value(QStringLiteral("rows")).toArray().size() > 128
         || gpus.value(QStringLiteral("integratedGpuTemperatureInferred")).toBool(true))
         return false;
-    const QStringList memoryKinds = {QStringLiteral("shared"),
-                                     QStringLiteral("driver-reported-vram"),
-                                     QStringLiteral("unavailable")};
     const bool gpuPresent = gpu.value(QStringLiteral("present")).toBool(false);
-    const QJsonValue memoryKind = gpu.value(QStringLiteral("memoryKind"));
     if (!gpu.value(QStringLiteral("present")).isBool()
         || !gpu.value(QStringLiteral("available")).isBool()
-        || !gpu.value(QStringLiteral("memoryAvailable")).isBool()
-        || (gpuPresent && (!memoryKind.isString()
-                           || !memoryKinds.contains(memoryKind.toString())))
-        || (!gpuPresent && !memoryKind.isNull())
         || !optionalInteger(gpu.value(QStringLiteral("card")), 0)
         || !optionalInteger(gpu.value(QStringLiteral("busyPercentMilli")), 0)
-        || !optionalInteger(gpu.value(QStringLiteral("memoryUsedBytes")), 0)
-        || !optionalInteger(gpu.value(QStringLiteral("memoryTotalBytes")), 0))
-        return false;
+        || !validGpuMemory(gpu, gpuPresent)) return false;
     for (const QJsonValue entry : gpus.value(QStringLiteral("rows")).toArray()) {
         if (!entry.isObject()) return false;
         const QJsonObject row = entry.toObject();
         if (!integerValue(row.value(QStringLiteral("card")), 0)
-            || !row.value(QStringLiteral("memoryKind")).isString()
-            || !memoryKinds.contains(row.value(QStringLiteral("memoryKind")).toString())
+            || !validGpuMemory(row, true)
             || !optionalInteger(row.value(QStringLiteral("utilizationPercentMilli")), 0)
-            || !optionalInteger(row.value(QStringLiteral("memoryUsedBytes")), 0)
-            || !optionalInteger(row.value(QStringLiteral("memoryTotalBytes")), 0)
             || !optionalInteger(row.value(QStringLiteral("temperatureMillidegreesCelsius")),
                                 -1000000))
             return false;
@@ -279,10 +297,14 @@ bool validFrameSemantics(const QJsonObject &root, const QString &view) {
     if (view == QStringLiteral("processes"))
         return requiredFalse(semantics, {QStringLiteral("processControl"),
                                     QStringLiteral("commandLinesExposed"),
-                                    QStringLiteral("pathsExposed")});
+                                    QStringLiteral("pathsExposed")})
+            && semantics.value(QStringLiteral("sharedGpuMemoryNonAdditive"))
+                   .toBool(false);
     if (view == QStringLiteral("performance"))
         return requiredFalse(semantics, {QStringLiteral("integratedGpuTemperatureInferred"),
-                                    QStringLiteral("telemetry")});
+                                    QStringLiteral("telemetry")})
+            && semantics.value(QStringLiteral("sharedGpuMemoryNonAdditive"))
+                   .toBool(false);
     if (view == QStringLiteral("services"))
         return requiredFalse(semantics, {QStringLiteral("serviceMutation"),
                                     QStringLiteral("pathsExposed"),
@@ -513,7 +535,11 @@ bool decodePresentation(const QByteArray &payload, MonitorPresentationContract *
     const QJsonObject localization = root.value(QStringLiteral("localization")).toObject();
     if (localization.value(QStringLiteral("identifiers")).toString()
             != QStringLiteral("locale-neutral")
-        || !localization.value(QStringLiteral("humanLabelsOwnedByGui")).toBool())
+        || !localization.value(QStringLiteral("humanLabelsOwnedByGui")).toBool()
+        || !localization.value(QStringLiteral("runtimeSelector")).isBool()
+        || localization.value(QStringLiteral("runtimeSelector")).toBool(true)
+        || localization.value(QStringLiteral("selection")).toString()
+            != QStringLiteral("launch-or-session"))
         return fail(errorId, QStringLiteral("presentation-invalid"));
     const QJsonObject inspection = root.value(QStringLiteral("inspection")).toObject();
     QStringList inspectionIdentity;

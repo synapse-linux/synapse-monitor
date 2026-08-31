@@ -123,10 +123,17 @@ static void render_summary_text(const mon_report *report) {
     printf("DISK read %s write %s  |  NET receive %s transmit %s\n",
            disk_read, disk_write, net_receive, net_transmit);
     if (report->gpu_memory_available) {
-        char used[32], total[32];
+        char used[32];
         format_iec(report->gpu_memory_used_bytes, used, sizeof(used));
-        format_iec(report->gpu_memory_total_bytes, total, sizeof(total));
-        printf("GPU memory %s / %s (card %u)\n", used, total, report->gpu_card);
+        if (report->gpu_memory_total_available) {
+            char total[32];
+            format_iec(report->gpu_memory_total_bytes, total, sizeof(total));
+            printf("GPU memory %s / %s (card %u)\n", used, total,
+                   report->gpu_card);
+        } else {
+            printf("GPU memory %s shared GEM, non-additive (card %u)\n", used,
+                   report->gpu_card);
+        }
     }
 }
 
@@ -297,7 +304,52 @@ static void render_available_u64(const char *name, bool available, uint64_t valu
     else fputs("null", stdout);
 }
 
-static const char *gpu_memory_kind(const mon_gpu *gpu);
+static const char *gpu_memory_kind(const mon_gpu *gpu) {
+    if (!gpu) return NULL;
+    if (strcmp(gpu->driver, "i915") == 0 || strcmp(gpu->driver, "xe") == 0)
+        return "shared";
+    if (gpu->memory_available) return "driver-reported-vram";
+    return "unavailable";
+}
+
+static const char *gpu_memory_source(const mon_gpu *gpu) {
+    if (!gpu || !gpu->memory_available) return "unavailable";
+    return gpu->memory_from_collector ? "root-owned-fresh-collector"
+                                      : "driver-sysfs";
+}
+
+static const mon_gpu *report_summary_gpu(const mon_report *report) {
+    if (!report || report->gpu_count == 0U) return NULL;
+    for (size_t index = 0U; index < report->gpu_count; index++)
+        if (report->gpus[index].card == report->gpu_card)
+            return &report->gpus[index];
+    return &report->gpus[0];
+}
+
+static void render_gpu_memory_json(const mon_gpu *gpu) {
+    const bool present = gpu != NULL;
+    const bool used_available = present && gpu->memory_available;
+    printf(",\"memoryAvailable\":%s", used_available ? "true" : "false");
+    fputs(",\"memoryKind\":", stdout);
+    if (present) json_string(gpu_memory_kind(gpu));
+    else fputs("null", stdout);
+    fputs(",\"memorySource\":", stdout);
+    if (present) json_string(gpu_memory_source(gpu));
+    else fputs("null", stdout);
+    render_available_u64("memoryUsedBytes", used_available,
+                         present ? gpu->memory_used_bytes : 0U, true);
+    render_available_u64("memoryTotalBytes",
+                         present && gpu->memory_total_available,
+                         present ? gpu->memory_total_bytes : 0U, true);
+    fputs(",\"memoryOverlapsSystemRam\":", stdout);
+    if (present && strcmp(gpu_memory_kind(gpu), "shared") == 0)
+        fputs("true", stdout);
+    else fputs("null", stdout);
+    render_available_u64("memorySampleAgeMilliseconds",
+                         present && gpu->memory_sample_age_available,
+                         present ? gpu->memory_sample_age_milliseconds : 0U,
+                         true);
+}
 
 static int render_json(const mon_report *report, const mon_options *options) {
     size_t returned = rows_returned(report, options);
@@ -337,14 +389,7 @@ static int render_json(const mon_report *report, const mon_options *options) {
     render_available_u64("card", report->gpu_present, report->gpu_card, true);
     render_available_u64("busyPercentMilli", report->gpu_available,
                          report->gpu_busy_percent_milli, true);
-    printf(",\"memoryAvailable\":%s", report->gpu_memory_available ? "true" : "false");
-    fputs(",\"memoryKind\":", stdout);
-    if (report->gpu_count > 0U) json_string(gpu_memory_kind(&report->gpus[0]));
-    else fputs("null", stdout);
-    render_available_u64("memoryUsedBytes", report->gpu_memory_available,
-                         report->gpu_memory_used_bytes, true);
-    render_available_u64("memoryTotalBytes", report->gpu_memory_available,
-                         report->gpu_memory_total_bytes, true);
+    render_gpu_memory_json(report_summary_gpu(report));
     printf("},\"disk\":{\"available\":%s",
            report->disk_available ? "true" : "false");
     render_available_u64("readBytesPerSecond", report->disk_available,
@@ -408,7 +453,8 @@ static int render_json(const mon_report *report, const mon_options *options) {
     }
     fputs("],\"semantics\":{\"processControl\":false,"
           "\"commandLinesExposed\":false,\"pathsExposed\":false,"
-          "\"diskSectorBytes\":512,\"ratesAreSampleDeltas\":true}}\n", stdout);
+          "\"diskSectorBytes\":512,\"ratesAreSampleDeltas\":true,"
+          "\"sharedGpuMemoryNonAdditive\":true}}\n", stdout);
     return ferror(stdout) ? 1 : 0;
 }
 
@@ -471,13 +517,6 @@ static const char *gpu_vendor(const char *vendor_id) {
     return "unknown-vendor";
 }
 
-static const char *gpu_memory_kind(const mon_gpu *gpu) {
-    if (strcmp(gpu->driver, "i915") == 0 || strcmp(gpu->driver, "xe") == 0)
-        return "shared";
-    if (gpu->memory_available) return "driver-reported-vram";
-    return "unknown";
-}
-
 static void render_gpu_text(const mon_gpu *gpu) {
     char utilization[32] = "unavailable";
     char temperature[32] = "unavailable";
@@ -495,10 +534,14 @@ static void render_gpu_text(const mon_gpu *gpu) {
                            sizeof(temperature));
     if (gpu->memory_available) {
         char used[32];
-        char total[32];
         format_iec(gpu->memory_used_bytes, used, sizeof(used));
-        format_iec(gpu->memory_total_bytes, total, sizeof(total));
-        (void)snprintf(memory, sizeof(memory), "%s / %s", used, total);
+        if (gpu->memory_total_available) {
+            char total[32];
+            format_iec(gpu->memory_total_bytes, total, sizeof(total));
+            (void)snprintf(memory, sizeof(memory), "%s / %s", used, total);
+        } else {
+            (void)snprintf(memory, sizeof(memory), "%s shared GEM", used);
+        }
     } else if (strcmp(gpu_memory_kind(gpu), "shared") == 0)
         (void)snprintf(memory, sizeof(memory), "shared; driver-managed");
     if (gpu->core_clock_available)
@@ -707,14 +750,9 @@ static void render_gpu_json(const mon_gpu *gpu) {
     render_available_string("vendor", gpu_vendor(gpu->vendor_id), true);
     render_available_string("driver", gpu->driver, true);
     render_available_string("model", gpu->model, true);
-    fputs(",\"memoryKind\":", stdout);
-    json_string(gpu_memory_kind(gpu));
+    render_gpu_memory_json(gpu);
     render_available_u64("utilizationPercentMilli", gpu->utilization_available,
                          gpu->utilization_percent_milli, true);
-    render_available_u64("memoryUsedBytes", gpu->memory_available,
-                         gpu->memory_used_bytes, true);
-    render_available_u64("memoryTotalBytes", gpu->memory_available,
-                         gpu->memory_total_bytes, true);
     render_available_i64("temperatureMillidegreesCelsius",
                          gpu->temperature_available,
                          gpu->temperature_millidegrees_celsius, true);
@@ -803,15 +841,7 @@ static int render_performance_json(const mon_report *report,
     render_available_u64("card", report->gpu_present, report->gpu_card, true);
     render_available_u64("busyPercentMilli", report->gpu_available,
                          report->gpu_busy_percent_milli, true);
-    printf(",\"memoryAvailable\":%s",
-           report->gpu_memory_available ? "true" : "false");
-    fputs(",\"memoryKind\":", stdout);
-    if (report->gpu_count > 0U) json_string(gpu_memory_kind(&report->gpus[0]));
-    else fputs("null", stdout);
-    render_available_u64("memoryUsedBytes", report->gpu_memory_available,
-                         report->gpu_memory_used_bytes, true);
-    render_available_u64("memoryTotalBytes", report->gpu_memory_available,
-                         report->gpu_memory_total_bytes, true);
+    render_gpu_memory_json(report_summary_gpu(report));
     printf("},\"gpus\":{\"available\":%s,\"rowsReturned\":%zu,"
            "\"rowsObserved\":%zu,\"truncated\":%s,\"rows\":[",
            report->gpu_present ? "true" : "false", gpu_returned,
@@ -903,6 +933,7 @@ static int render_performance_json(const mon_report *report,
           "\"temperatureUnit\":\"millidegrees-celsius\","
           "\"frequencyUnit\":\"hertz\",\"powerUnit\":\"microwatts\","
           "\"integratedGpuTemperatureInferred\":false,"
+          "\"sharedGpuMemoryNonAdditive\":true,"
           "\"telemetry\":false}}\n", stdout);
     return ferror(stdout) ? 1 : 0;
 }

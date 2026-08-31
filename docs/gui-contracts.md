@@ -1,6 +1,6 @@
 # Graphical presentation contracts
 
-The Alpha 7 graphical shell is a separate, presentation-only consumer. The C17
+The Alpha 8 graphical shell is a separate, presentation-only consumer. The C17
 core owns observation, bounded source selection, privacy and exact-major wire
 contracts. The native Qt adapter owns transport validation, typed models and
 bounded local row presentation. QML owns layout, generic typography, color,
@@ -103,18 +103,26 @@ The adapter must:
 12. stop and surface a bounded generic error if framing or schema validation fails;
 13. terminate its child stream on GUI shutdown or view replacement.
 
-Alpha 7 implements these checks before publishing any frame to QML. It also
+Alpha 8 implements these checks before publishing any frame to QML. It also
 bounds stderr to 32 KiB, capability/inspection documents to 256 KiB, row cohorts
 and filter options to 512, and filter tokens to SHA-256-sized identifiers. Zero
 socket inodes are reported as unavailable identity coverage and never enter the
 connection row model.
 
-GPU memory is never omitted from the top-level presentation. A numeric value is
-shown only when the driver exposes both used and total counters, and is labelled
-as driver-reported graphics memory. Integrated GPUs whose `memoryKind` is
-`shared` show shared system memory with unavailable usage when no reliable
-unprivileged counter exists. The GUI does not relabel total RAM, Shmem or a
-privileged i915 GEM aggregate as dedicated VRAM.
+GPU memory is never omitted from the top-level presentation. Driver sysfs used
+and total counters are labelled as driver-reported graphics memory. An i915 GPU
+may instead expose numeric global GEM allocated bytes from the existing bounded,
+fresh, root-owned collector cache. Its total remains `null`,
+`memoryOverlapsSystemRam` is true, and the GUI labels it shared and non-additive;
+it is never called dedicated VRAM. The core accepts only the fixed collector,
+requires a single unchanged regular file with safe ownership/mode, caps it at
+128 KiB and 120 seconds, and parses unique exact metrics. The native adapter
+accepts only `driver-sysfs|root-owned-fresh-collector|unavailable` source IDs and
+rejects inconsistent kind/value/total/overlap/age combinations. Failure remains
+explicitly unavailable rather than falling back to total RAM or Shmem.
+
+Locale is selected once before QML loads from the bounded launch option or
+session locale. No localization object or language selector is exposed to QML.
 
 No process, service, startup, connection, GPU, thermal, fan, power or clock
 mutation is authorized by these contracts. The graphical implementation adds no

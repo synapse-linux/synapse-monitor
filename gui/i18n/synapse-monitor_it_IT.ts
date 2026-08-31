@@ -119,10 +119,6 @@
       <source>synapse.monitor.action.interval</source>
       <translation>Intervallo di aggiornamento</translation>
     </message>
-    <message id="synapse.monitor.action.language">
-      <source>synapse.monitor.action.language</source>
-      <translation>Lingua</translation>
-    </message>
     <message id="synapse.monitor.metric.cpu">
       <source>synapse.monitor.metric.cpu</source>
       <translation>CPU</translation>
@@ -185,7 +181,11 @@
     </message>
     <message id="synapse.monitor.gpu-memory.shared-unavailable">
       <source>synapse.monitor.gpu-memory.shared-unavailable</source>
-      <translation>Memoria di sistema condivisa; uso GEM non disponibile senza privilegi aggiuntivi</translation>
+      <translation>Memoria di sistema condivisa; misura GEM globale non disponibile</translation>
+    </message>
+    <message id="synapse.monitor.gpu-memory.shared-measured">
+      <source>synapse.monitor.gpu-memory.shared-measured</source>
+      <translation>Allocazioni GEM globali · RAM condivisa · non additiva</translation>
     </message>
     <message id="synapse.monitor.gpu-memory.shared-kind">
       <source>synapse.monitor.gpu-memory.shared-kind</source>

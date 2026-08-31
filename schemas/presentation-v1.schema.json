@@ -177,10 +177,12 @@
     "localization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["identifiers", "humanLabelsOwnedByGui"],
+      "required": ["identifiers", "humanLabelsOwnedByGui", "runtimeSelector", "selection"],
       "properties": {
         "identifiers": {"const": "locale-neutral"},
-        "humanLabelsOwnedByGui": {"const": true}
+        "humanLabelsOwnedByGui": {"const": true},
+        "runtimeSelector": {"const": false},
+        "selection": {"const": "launch-or-session"}
       }
     },
     "authority": {"$ref": "#/$defs/allFalse"},

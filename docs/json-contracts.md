@@ -59,10 +59,15 @@ The Performance contract contains:
 
 Units are fixed: milli-percent, bytes, hertz, microwatts, RPM and
 millidegrees Celsius. Unavailable numeric values are `null`, never fabricated
-zeroes. `memoryKind=shared` describes integrated system-memory use without
-claiming a separately measurable pool. A driver-reported VRAM window is not
-claimed to be physically dedicated memory. Integrated-GPU temperature is never inferred from CPU-package or thermal
-zone values.
+zeroes. GPU memory carries `memorySource` as
+`driver-sysfs|root-owned-fresh-collector|unavailable`, independently nullable
+used/total bytes, nullable sample age and `memoryOverlapsSystemRam`.
+`memoryKind=shared` describes integrated system-memory allocations without
+claiming a separately measurable total pool. A fresh validated i915 collector
+may provide global GEM allocated bytes while total remains `null`; the value
+overlaps system RAM and is non-additive. A driver-reported VRAM window is not
+claimed to be physically dedicated memory. Integrated-GPU temperature is never
+inferred from CPU-package or thermal zone values.
 
 `performance/v1` remains a historical Alpha 2 contract; Alpha 3 and later emit v2.
 

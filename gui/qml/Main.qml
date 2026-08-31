@@ -196,25 +196,6 @@ ApplicationWindow {
                     mutedColor: window.textMuted; accentColor: window.accentColor
                     Accessible.name: qsTrId("synapse.monitor.action.interval")
                 }
-                Label {
-                    text: qsTrId("synapse.monitor.action.language") + ":"
-                    color: window.textMuted
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                }
-                SynapseComboBox {
-                    model: ["it_IT", "en_US"]
-                    currentIndex: Math.max(0, model.indexOf(monitorLocalization.currentLocale))
-                    textForValue: function(value) {
-                        return value === "it_IT" ? "Italiano" : "English"
-                    }
-                    onActivated: monitorLocalization.setLocale(String(currentValue))
-                    implicitWidth: 112
-                    surfaceColor: window.surfaceColor; hoverColor: window.hoverColor
-                    borderColor: window.borderColor; textColor: window.textPrimary
-                    mutedColor: window.textMuted; accentColor: window.accentColor
-                    Accessible.name: qsTrId("synapse.monitor.action.language")
-                }
             }
             Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: window.borderColor }
         }

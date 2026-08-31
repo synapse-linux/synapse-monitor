@@ -156,6 +156,22 @@ private slots:
         QCOMPARE(error, QStringLiteral("presentation-invalid"));
     }
 
+    void runtimeLocaleSelectorFailsClosed() {
+        QJsonObject object = QJsonDocument::fromJson(
+            run({QStringLiteral("describe"), QStringLiteral("--format"),
+                 QStringLiteral("json")})).object();
+        QJsonObject localization =
+            object.value(QStringLiteral("localization")).toObject();
+        localization.insert(QStringLiteral("runtimeSelector"), true);
+        object.insert(QStringLiteral("localization"), localization);
+        MonitorPresentationContract contract;
+        QString error;
+        QVERIFY(!MonitorContracts::decodePresentation(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), &contract,
+            &error));
+        QCOMPARE(error, QStringLiteral("presentation-invalid"));
+    }
+
     void mutationAuthorityInPresentationFailsClosed() {
         QJsonObject object = QJsonDocument::fromJson(
             run({QStringLiteral("describe"), QStringLiteral("--format"),
@@ -260,6 +276,79 @@ private slots:
             frame(QStringLiteral("performance"))).object();
         QJsonObject gpu = object.value(QStringLiteral("gpu")).toObject();
         gpu.insert(QStringLiteral("memoryKind"), QStringLiteral("dedicated"));
+        object.insert(QStringLiteral("gpu"), gpu);
+        QVariantMap payload;
+        QVariantList rows;
+        QStringList identities;
+        QString error;
+        QVERIFY(!MonitorContracts::decodeFrame(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), contract,
+            QStringLiteral("performance"), 0, 250, 16,
+            &payload, &rows, &identities, &error));
+        QCOMPARE(error, QStringLiteral("stream-invalid"));
+    }
+
+    void validSharedGpuCollectorContractIsAccepted() {
+        const MonitorPresentationContract contract = presentation();
+        QJsonObject object = QJsonDocument::fromJson(
+            frame(QStringLiteral("performance"))).object();
+        QJsonObject gpu = object.value(QStringLiteral("gpu")).toObject();
+        gpu.insert(QStringLiteral("present"), true);
+        gpu.insert(QStringLiteral("card"), 1);
+        gpu.insert(QStringLiteral("memoryKind"), QStringLiteral("shared"));
+        gpu.insert(QStringLiteral("memoryAvailable"), true);
+        gpu.insert(QStringLiteral("memorySource"),
+                   QStringLiteral("root-owned-fresh-collector"));
+        gpu.insert(QStringLiteral("memoryUsedBytes"), 167227392);
+        gpu.insert(QStringLiteral("memoryTotalBytes"), QJsonValue::Null);
+        gpu.insert(QStringLiteral("memoryOverlapsSystemRam"), true);
+        gpu.insert(QStringLiteral("memorySampleAgeMilliseconds"), 1500);
+        object.insert(QStringLiteral("gpu"), gpu);
+        QVariantMap payload;
+        QVariantList rows;
+        QStringList identities;
+        QString error;
+        QVERIFY(MonitorContracts::decodeFrame(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), contract,
+            QStringLiteral("performance"), 0, 250, 16,
+            &payload, &rows, &identities, &error));
+        QCOMPARE(payload.value(QStringLiteral("gpu")).toMap()
+                     .value(QStringLiteral("memoryUsedBytes")).toLongLong(),
+                 qint64(167227392));
+    }
+
+    void inconsistentSharedGpuMemoryFailsClosed() {
+        const MonitorPresentationContract contract = presentation();
+        QJsonObject object = QJsonDocument::fromJson(
+            frame(QStringLiteral("performance"))).object();
+        QJsonObject gpu = object.value(QStringLiteral("gpu")).toObject();
+        gpu.insert(QStringLiteral("memoryKind"), QStringLiteral("shared"));
+        gpu.insert(QStringLiteral("memoryAvailable"), true);
+        gpu.insert(QStringLiteral("memorySource"),
+                   QStringLiteral("root-owned-fresh-collector"));
+        gpu.insert(QStringLiteral("memoryUsedBytes"), 1024);
+        gpu.insert(QStringLiteral("memoryTotalBytes"), 4096);
+        gpu.insert(QStringLiteral("memoryOverlapsSystemRam"), false);
+        gpu.insert(QStringLiteral("memorySampleAgeMilliseconds"), 10);
+        object.insert(QStringLiteral("gpu"), gpu);
+        QVariantMap payload;
+        QVariantList rows;
+        QStringList identities;
+        QString error;
+        QVERIFY(!MonitorContracts::decodeFrame(
+            QJsonDocument(object).toJson(QJsonDocument::Compact), contract,
+            QStringLiteral("performance"), 0, 250, 16,
+            &payload, &rows, &identities, &error));
+        QCOMPARE(error, QStringLiteral("stream-invalid"));
+    }
+
+    void unapprovedGpuMemorySourceFailsClosed() {
+        const MonitorPresentationContract contract = presentation();
+        QJsonObject object = QJsonDocument::fromJson(
+            frame(QStringLiteral("performance"))).object();
+        QJsonObject gpu = object.value(QStringLiteral("gpu")).toObject();
+        gpu.insert(QStringLiteral("memorySource"),
+                   QStringLiteral("arbitrary-file"));
         object.insert(QStringLiteral("gpu"), gpu);
         QVariantMap payload;
         QVariantList rows;

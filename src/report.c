@@ -272,6 +272,7 @@ int mon_collect_report(const mon_roots *roots, uint64_t sample_milliseconds,
     report->gpu_busy_percent_milli = host_current.gpu_busy_percent_milli;
     report->gpu_memory_available = host_current.gpu_memory_available;
     report->gpu_memory_used_bytes = host_current.gpu_memory_used_bytes;
+    report->gpu_memory_total_available = host_current.gpu_memory_total_available;
     report->gpu_memory_total_bytes = host_current.gpu_memory_total_bytes;
     report->gpu_count = host_current.gpu_count;
     report->gpu_truncated = host_current.gpu_truncated || host_previous.gpu_truncated;

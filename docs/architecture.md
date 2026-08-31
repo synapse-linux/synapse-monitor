@@ -66,7 +66,14 @@ label without retaining a PCI path. Fixed unprivileged sysfs observations may
 provide utilization, driver-reported VRAM,
 temperature, current/maximum core clock, memory clock, average/input power,
 power cap and fan RPM. Every value has an independent availability flag; a
-VRAM window is not classified as physically dedicated memory.
+VRAM window is not classified as physically dedicated memory. For exactly one
+i915 device, the core may consume the fixed existing root-owned textfile cache
+to obtain authoritative global GEM allocation bytes. The open file must be
+regular, single-linked, safely owned and non-writable by group/others, no larger
+than 128 KiB, no older than 120 seconds and unchanged across the bounded read;
+required metrics must be unique exact integers. Monitor neither invokes nor
+controls the privileged collector. Shared allocation use is independent from
+total, explicitly overlaps system RAM and must not be summed with RAM views.
 
 Unavailable history observations remain JSON `null` in graphical streams;
 measured zero is retained as numeric zero. Full stream frames replace prior
@@ -122,7 +129,7 @@ read. Host names, machine IDs and serial-number files are outside the contract.
 
 The core exposes `synapse.monitor.presentation/v1` capability discovery and
 one-view NDJSON streams. It exposes identifiers, units, availability and stable
-row identities but no command templates or visual styling. The Alpha 7 native
+row identities but no command templates or visual styling. The Alpha 8 native
 adapter owns fixed argv, child-process lifetime, framing, exact-major validation,
 line/error caps, sequence checks, identity reconciliation and bounded local row
 presentation. A backend override
@@ -130,7 +137,9 @@ exists only behind explicit test authority; normal discovery considers the
 sibling and `/usr/bin/synapse-monitor` fixed locations.
 
 QML owns only layout, translated labels, generic typography, color, charts,
-animation and accessibility. It receives typed maps/models and never parses JSON
+animation and accessibility. Locale is fixed before QML loads from the bounded
+launch option or session locale; QML receives no locale switcher object and the
+window contains no language selector. It receives typed maps/models and never parses JSON
 or constructs a command, argv or executable path. A sortable header emits only
 its reviewed sort identifier; the adapter checks it against the exact
 presentation allowlist and reorders the accepted native model immediately. A
@@ -151,6 +160,8 @@ sockets but cannot open IPv4 or IPv6 traffic.
 
 ## Authority
 
-Alpha 7 is inspection-only. There is deliberately no signal, kill, dump,
+Alpha 8 is inspection-only. There is deliberately no signal, kill, dump,
 priority, service/startup mutation, connection control, mount, cgroup mutation,
-privileged helper, subprocess execution, listener or telemetry interface.
+privileged-helper invocation, subprocess execution, listener or telemetry
+interface. Reading a pre-existing validated root-owned collector cache does not
+add mutation or privilege authority to Monitor.

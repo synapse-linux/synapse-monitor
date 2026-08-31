@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.7' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.8' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -62,7 +62,7 @@ assert sets[0]==sets[1]
 PY
 
 python3 - "$repo/gui/qml/DataTable.qml" "$repo/gui/qml/ProcessesView.qml" \
-  "$repo/gui/qml/InventoryView.qml" <<'PY'
+  "$repo/gui/qml/InventoryView.qml" "$repo/gui/qml/Main.qml" <<'PY'
 import pathlib,sys
 header=pathlib.Path(sys.argv[1]).read_text()
 assert 'signal sortRequested(string sortId)' in header
@@ -71,7 +71,7 @@ assert 'Keys.onReturnPressed: root.requestSort(headerCell.modelData)' in header
 assert 'root.activeSortId === headerCell.sortId' in header
 assert 'columnFilterOptions' in header and 'setColumnFilter' in header
 assert 'synapse.monitor.filter.select-all' in header
-for path in sys.argv[2:]:
+for path in sys.argv[2:4]:
  text=pathlib.Path(path).read_text()
  definitions=[line for line in text.splitlines() if '{ key:' in line]
  assert definitions and all('sortId:' in line for line in definitions), path
@@ -84,6 +84,10 @@ for path in sys.argv[2:]:
 assert 'key: "uid", sortId: "user"' in pathlib.Path(sys.argv[2]).read_text()
 assert 'key: "state", sortId: "status"' in pathlib.Path(sys.argv[3]).read_text()
 assert 'key: "location", sortId: "location"' in pathlib.Path(sys.argv[3]).read_text()
+main=pathlib.Path(sys.argv[4]).read_text()
+assert 'monitorLocalization' not in main
+assert 'synapse.monitor.action.language' not in main
+assert 'model: ["it_IT", "en_US"]' not in main
 PY
 
 ! grep -R -n -E '(/usr/bin|/usr/local|QProcess|subprocess|Process\s*\{|argv|system\(|popen\(|shell)' \
