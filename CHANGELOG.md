@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0-alpha.11
+
+- Reclaim destroyed QML view objects after the first accepted frame of each real view transition.
+- Collect QML garbage, trim unused component-cache entries and return free glibc arenas after deferred deletion.
+- Add a fixed test-authority-only six-view cycle for sustained RSS/PSS qualification instead of relying on launch-time memory.
+- Give the sort arrow a fixed bounded width, eliminating the intermittent DataTable implicit-width binding loop exposed by full view traversal.
+- Preserve Alpha 10's unified GPU summary, visible normal workspace, software renderer, disabled transparent huge pages and read-only contracts.
+
 ## 0.5.0-alpha.10
 
 - Replace the adjacent GPU and GPU-memory summary cards with one unambiguous GPU card.

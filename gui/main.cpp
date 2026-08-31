@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QFontInfo>
 #include <QGuiApplication>
+#include <QEvent>
 #include <QImage>
 #include <QPointer>
 #include <QQmlApplicationEngine>
@@ -23,10 +24,11 @@
 #include <cstring>
 #include <memory>
 
+#include <malloc.h>
 #include <sys/prctl.h>
 
 #ifndef SYNAPSE_MONITOR_VERSION
-#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.10"
+#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.11"
 #endif
 
 namespace {
@@ -101,9 +103,16 @@ int main(int argc, char **argv) {
     parser.addOptions({backendOption, viewOption, localeOption, testFramesOption,
                        testTimeoutOption, testSizeOption, testGrabOption});
     parser.process(application);
-    if (parser.isSet(backendOption)
-        && qgetenv("SYNAPSE_MONITOR_ALLOW_TEST_BACKEND") != QByteArrayLiteral("1")) {
+    const bool testAuthority =
+        qgetenv("SYNAPSE_MONITOR_ALLOW_TEST_BACKEND") == QByteArrayLiteral("1");
+    const bool testViewCycle =
+        qgetenv("SYNAPSE_MONITOR_TEST_VIEW_CYCLE") == QByteArrayLiteral("1");
+    if (parser.isSet(backendOption) && !testAuthority) {
         qCritical("synapse-monitor-gui: backend override requires explicit test authority");
+        return 2;
+    }
+    if (testViewCycle && !testAuthority) {
+        qCritical("synapse-monitor-gui: view cycle requires explicit test authority");
         return 2;
     }
 
@@ -180,6 +189,36 @@ int main(int argc, char **argv) {
     }
     std::fprintf(stderr,
                  "synapse-monitor-gui: renderer=software transparent-huge-pages=disabled\n");
+
+    const auto reclaimGeneration = std::make_shared<quint64>(0);
+    const auto reclaimPending = std::make_shared<bool>(false);
+    const auto reclaimView = std::make_shared<QString>();
+    QObject::connect(&adapter, &MonitorAdapter::selectionChanged, &engine,
+                     [&adapter, reclaimGeneration, reclaimPending, reclaimView]() {
+        if (*reclaimView == adapter.currentView()) return;
+        *reclaimView = adapter.currentView();
+        ++(*reclaimGeneration);
+        *reclaimPending = true;
+    });
+    QObject::connect(&adapter, &MonitorAdapter::frameAccepted, &engine,
+                     [&engine, reclaimGeneration, reclaimPending, reclaimView]() {
+        if (!*reclaimPending) return;
+        *reclaimPending = false;
+        const quint64 generation = *reclaimGeneration;
+        const QString view = *reclaimView;
+        QTimer::singleShot(400, &engine,
+                           [&engine, reclaimGeneration, generation, view]() {
+            if (*reclaimGeneration != generation) return;
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            engine.collectGarbage();
+            engine.trimComponentCache();
+            const int trimmed = malloc_trim(0);
+            std::fprintf(stderr,
+                         "synapse-monitor-gui: memory-reclaim view=%s allocator=%s\n",
+                         view.toUtf8().constData(), trimmed != 0 ? "trimmed" : "stable");
+        });
+    });
+
     if (testSize.isValid()) {
         window->setWidth(testSize.width());
         window->setHeight(testSize.height());
@@ -211,5 +250,18 @@ int main(int argc, char **argv) {
     const bool initialized = adapter.initialize(parser.value(viewOption));
     if (!initialized && testFrames == 0)
         std::fprintf(stderr, "synapse-monitor-gui: adapter initialization failed\n");
+    if (initialized && testViewCycle) {
+        const QStringList cycle = {QStringLiteral("processes"),
+                                   QStringLiteral("performance"),
+                                   QStringLiteral("services"),
+                                   QStringLiteral("startup"),
+                                   QStringLiteral("connections"),
+                                   QStringLiteral("information")};
+        for (qsizetype index = 0; index < cycle.size(); ++index) {
+            const QString view = cycle.at(index);
+            QTimer::singleShot(800 * static_cast<int>(index + 1), &adapter,
+                               [&adapter, view]() { adapter.selectView(view); });
+        }
+    }
     return application.exec();
 }

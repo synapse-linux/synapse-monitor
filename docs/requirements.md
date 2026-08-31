@@ -1,4 +1,4 @@
-# Alpha 10 requirements
+# Alpha 11 requirements
 
 ## Functional views
 
@@ -52,6 +52,9 @@
 - `MON-067`: mark observed-footprint components as potentially overlapping, reject incomplete PSS scans and fail closed on inconsistent arithmetic.
 - `MON-068`: use one GPU summary card with independently labelled utilization and memory values; do not present adjacent GPU and GPU-memory summary cards.
 - `MON-069`: disable transparent huge pages for the GUI process before Qt initialization and use the Qt Quick software graphics API, while preserving complete rendering and the native core boundary.
+- `MON-070`: after a completed view transition, reclaim deferred QML objects, collect QML garbage, trim unused components and return free allocator arenas without clearing the accepted frame or delaying a superseding transition.
+- `MON-071`: qualify sustained GUI RSS/PSS after a fixed traversal of all six views; launch-time memory alone is insufficient.
+- `MON-072`: size the active sort indicator from a fixed bounded token width, avoiding any implicit-width binding cycle during table reconstruction.
 
 ## Safety and privacy
 

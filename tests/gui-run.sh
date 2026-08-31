@@ -9,7 +9,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.10' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.11' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -72,6 +72,8 @@ assert 'signal sortRequested(string sortId)' in header
 assert 'onClicked: root.requestSort(headerCell.modelData)' in header
 assert 'Keys.onReturnPressed: root.requestSort(headerCell.modelData)' in header
 assert 'root.activeSortId === headerCell.sortId' in header
+assert 'width: headerCell.selected ? 12 : 0' in header
+assert 'width: headerCell.selected ? implicitWidth : 0' not in header
 assert 'columnFilterOptions' in header and 'setColumnFilter' in header
 assert 'synapse.monitor.filter.select-all' in header
 for path in sys.argv[2:4]:
@@ -110,6 +112,9 @@ PY
 grep -Fq 'synapse.monitor.metric.shared-memory' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
 grep -Fq 'prctl(PR_SET_THP_DISABLE, 1L, 0L, 0L, 0L)' "$repo/gui/main.cpp"
 grep -Fq 'QQuickWindow::setGraphicsApi(QSGRendererInterface::Software)' "$repo/gui/main.cpp"
+grep -Fq 'engine.collectGarbage()' "$repo/gui/main.cpp"
+grep -Fq 'engine.trimComponentCache()' "$repo/gui/main.cpp"
+grep -Fq 'malloc_trim(0)' "$repo/gui/main.cpp"
 ! grep -Fq 'non-additive' "$repo/gui/i18n/synapse-monitor_en_US.ts"
 ! grep -Fq 'non additiva' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
 

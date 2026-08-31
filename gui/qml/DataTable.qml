@@ -153,7 +153,7 @@ Rectangle {
                                 anchors.rightMargin: 2
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: headerCell.selected
-                                width: headerCell.selected ? implicitWidth : 0
+                                width: headerCell.selected ? 12 : 0
                                 text: root.sortAscending ? "↑" : "↓"
                                 color: headerCell.selected ? root.accentColor : root.mutedColor
                                 font.pixelSize: 11

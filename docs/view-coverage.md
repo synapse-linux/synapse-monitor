@@ -1,7 +1,7 @@
 # Informational view coverage
 
 This matrix is the independent first-party completeness gate for the C17
-monitor and its Alpha 10 graphical projection. It names product requirements,
+monitor and its Alpha 11 graphical projection. It names product requirements,
 not external products.
 
 | Area | Alpha 4 content | Safety treatment |
