@@ -8,6 +8,8 @@ import QtQuick.Window
 ApplicationWindow {
     id: window
     objectName: "synapseMonitorWindow"
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
     width: 1280
     height: 800
     minimumWidth: 700

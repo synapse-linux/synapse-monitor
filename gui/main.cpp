@@ -29,7 +29,7 @@
 #include <sys/prctl.h>
 
 #ifndef SYNAPSE_MONITOR_VERSION
-#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.12"
+#define SYNAPSE_MONITOR_VERSION "0.5.0-alpha.13"
 #endif
 
 namespace {
@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
         QStringLiteral("view"), QStringLiteral("Initial reviewed view identifier."),
         QStringLiteral("view"), QStringLiteral("processes"));
     QCommandLineOption localeOption(
-        QStringLiteral("locale"), QStringLiteral("GUI locale (en_US or it_IT)."),
+        QStringLiteral("locale"), QStringLiteral("Pinned GUI locale; unknown values fall back to en_US."),
         QStringLiteral("locale"));
     QCommandLineOption testFramesOption(
         QStringLiteral("test-exit-after-frames"),

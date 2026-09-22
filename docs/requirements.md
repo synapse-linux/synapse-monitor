@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MIT -->
 # Alpha 12 requirements
 
 ## Functional views
@@ -42,7 +43,7 @@
 - `MON-057`: observe host connection tables from the host network namespace while denying IPv4/IPv6 socket authority in the graphical sandbox.
 - `MON-058`: apply table sorting in the validated native model without restarting the stream, clearing the current frame or exposing argv construction to QML.
 - `MON-059`: toggle ascending/descending order, keep unavailable values last in both directions and use stable identity as the deterministic tie-breaker.
-- `MON-060`: provide bounded Excel-style per-column value filters using only native-generated opaque tokens over at most 512 validated loaded rows.
+- `MON-060`: provide bounded per-column value filters using only native-generated opaque tokens over at most 512 validated loaded rows.
 - `MON-061`: expose no in-window locale selector; select one bounded catalogue at launch from the explicit option or session locale.
 - `MON-062`: show GPU memory explicitly and distinguish driver-reported counters, integrated shared memory and unavailable use without inference.
 - `MON-063`: preserve selected process identity and inspection payload while rows reorder or filter.

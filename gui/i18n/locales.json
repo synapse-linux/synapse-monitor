@@ -1,0 +1,355 @@
+{
+  "schema": "synapse.i18n.locales/v1",
+  "authority": {
+    "project": "CachyOS/cachyos-calamares",
+    "branchObserved": "cachyos-dev",
+    "commit": "ce54421cf0a08008ccda59a4e5f2f4747ae762be",
+    "sourceUrl": "https://raw.githubusercontent.com/CachyOS/cachyos-calamares/ce54421cf0a08008ccda59a4e5f2f4747ae762be/CMakeLists.txt",
+    "sourceSha256": "4d6514ff6d0795f2887955643cb36ed22e65dca94fe382ebd746d01c3e63f6a3",
+    "releaseMode": true,
+    "observedDate": "2026-08-28"
+  },
+  "fallbackLocale": "en_US",
+  "releaseLocaleCount": 64,
+  "baseLanguageCodeCount": 56,
+  "excludedIncompleteCount": 15,
+  "excludedIncompleteCachyosIds": [
+    "es_PR",
+    "gu",
+    "ie",
+    "ja-Hira",
+    "kk",
+    "kn",
+    "lo",
+    "lv",
+    "mk",
+    "ne_NP",
+    "ta_IN",
+    "te",
+    "ur",
+    "zh",
+    "zh_HK"
+  ],
+  "locales": [
+    {
+      "cachyosId": "ar",
+      "synapseId": "ar",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "as",
+      "synapseId": "as",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "ast",
+      "synapseId": "ast",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "az",
+      "synapseId": "az",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "az_AZ",
+      "synapseId": "az_AZ",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "be",
+      "synapseId": "be",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "bg",
+      "synapseId": "bg",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "bn",
+      "synapseId": "bn",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "ca",
+      "synapseId": "ca",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "ca@valencia",
+      "synapseId": "ca@valencia",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "cs_CZ",
+      "synapseId": "cs_CZ",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "da",
+      "synapseId": "da",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "de",
+      "synapseId": "de",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "el",
+      "synapseId": "el",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "en",
+      "synapseId": "en_US",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "en_GB",
+      "synapseId": "en_GB",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "eo",
+      "synapseId": "eo",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "es",
+      "synapseId": "es",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "es_AR",
+      "synapseId": "es_AR",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "es_MX",
+      "synapseId": "es_MX",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "et",
+      "synapseId": "et",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "eu",
+      "synapseId": "eu",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "fa",
+      "synapseId": "fa",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "fi_FI",
+      "synapseId": "fi_FI",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "fr",
+      "synapseId": "fr",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "fur",
+      "synapseId": "fur",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "gl",
+      "synapseId": "gl",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "he",
+      "synapseId": "he",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "hi",
+      "synapseId": "hi",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "hr",
+      "synapseId": "hr",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "hu",
+      "synapseId": "hu",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "ia",
+      "synapseId": "ia",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "id",
+      "synapseId": "id",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "is",
+      "synapseId": "is",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "it_IT",
+      "synapseId": "it_IT",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "ja",
+      "synapseId": "ja",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "ka",
+      "synapseId": "ka",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "ko",
+      "synapseId": "ko",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "lt",
+      "synapseId": "lt",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "ml",
+      "synapseId": "ml",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "mr",
+      "synapseId": "mr",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "nb",
+      "synapseId": "nb",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "nl",
+      "synapseId": "nl",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "oc",
+      "synapseId": "oc",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "pl",
+      "synapseId": "pl",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "pt_BR",
+      "synapseId": "pt_BR",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "pt_PT",
+      "synapseId": "pt_PT",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "ro",
+      "synapseId": "ro",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "ru",
+      "synapseId": "ru",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "si",
+      "synapseId": "si",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "sk",
+      "synapseId": "sk",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "sl",
+      "synapseId": "sl",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "sq",
+      "synapseId": "sq",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "sr",
+      "synapseId": "sr",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "sr@latin",
+      "synapseId": "sr@latin",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "sv",
+      "synapseId": "sv",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "tg",
+      "synapseId": "tg",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "th",
+      "synapseId": "th",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "tr_TR",
+      "synapseId": "tr_TR",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "uk",
+      "synapseId": "uk",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "uz",
+      "synapseId": "uz",
+      "quality": "good"
+    },
+    {
+      "cachyosId": "vi",
+      "synapseId": "vi",
+      "quality": "ok"
+    },
+    {
+      "cachyosId": "zh_CN",
+      "synapseId": "zh_CN",
+      "quality": "complete"
+    },
+    {
+      "cachyosId": "zh_TW",
+      "synapseId": "zh_TW",
+      "quality": "complete"
+    }
+  ]
+}

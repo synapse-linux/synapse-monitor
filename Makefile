@@ -5,7 +5,7 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share
 BUILD_DIR ?= build
-VERSION := 0.5.0-alpha.12
+VERSION := 0.5.0-alpha.13
 
 BASE_CPPFLAGS = -D_POSIX_C_SOURCE=200809L -D_FORTIFY_SOURCE=3 \
 	-DSYNAPSE_MONITOR_VERSION='"$(VERSION)"'
@@ -27,6 +27,15 @@ LDFLAGS ?=
 LDLIBS ?=
 PKG_CONFIG ?= pkg-config
 BUILD_GUI ?= auto
+ifneq ($(words $(BUILD_GUI)),1)
+$(error BUILD_GUI must be one mode)
+endif
+ifneq ($(filter $(BUILD_GUI),0 1 auto),$(BUILD_GUI))
+$(error BUILD_GUI must be 0, 1 or auto)
+endif
+ifeq ($(BUILD_GUI),0)
+GUI_ENABLED := 0
+else
 QMAKE6 ?= qmake6
 QT6_LIBEXECS := $(shell $(QMAKE6) -query QT_HOST_LIBEXECS 2>/dev/null)
 MOC6 ?= $(QT6_LIBEXECS)/moc
@@ -49,6 +58,7 @@ GUI_ENABLED := 0
 else
 GUI_ENABLED := $(GUI_DEPS_AVAILABLE)
 endif
+endif
 
 SOURCES = src/main.c src/cli.c src/probe.c src/report.c src/inventory.c \
 	src/render.c src/views.c src/presentation.c src/tui.c
@@ -56,13 +66,13 @@ OBJECTS = $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SOURCES))
 TARGET = $(BUILD_DIR)/synapse-monitor
 GUI_BINARY = $(BUILD_DIR)/synapse-monitor-gui
 GUI_SOURCES = gui/main.cpp gui/monitor_adapter.cpp gui/localization.cpp gui/typography.cpp
-GUI_HEADERS = gui/monitor_adapter.h gui/localization.h gui/typography.h
+GUI_HEADERS = gui/monitor_adapter.h gui/localization.h gui/typography.h gui/locales.inc
 GUI_MOC = $(BUILD_DIR)/moc_monitor_adapter.cpp $(BUILD_DIR)/moc_localization.cpp
 GUI_QML = gui/qml/Main.qml gui/qml/MetricCard.qml gui/qml/GpuSummaryCard.qml gui/qml/Sparkline.qml \
 	gui/qml/SynapseComboBox.qml gui/qml/DataTable.qml gui/qml/ProcessesView.qml gui/qml/PerformanceView.qml \
 	gui/qml/InventoryView.qml gui/qml/InformationView.qml gui/qml/ProcessInspector.qml
-GUI_QM = $(BUILD_DIR)/i18n/synapse-monitor_en_US.qm \
-	$(BUILD_DIR)/i18n/synapse-monitor_it_IT.qm
+GUI_CATALOGS = $(sort $(wildcard gui/i18n/*.ts))
+GUI_QM = $(patsubst gui/i18n/%.ts,$(BUILD_DIR)/i18n/%.qm,$(GUI_CATALOGS))
 GUI_QRC_FILE = $(BUILD_DIR)/resources.qrc
 GUI_RCC = $(BUILD_DIR)/qrc_resources.cpp
 GUI_TEST_MOC = $(BUILD_DIR)/test_gui_adapter.moc
@@ -72,7 +82,7 @@ ifeq ($(GUI_ENABLED),1)
 ALL_TARGETS += $(GUI_BINARY)
 endif
 
-.PHONY: all cli gui clean test install
+.PHONY: all cli gui clean test install install-cli install-gui catalog-check
 all: $(ALL_TARGETS)
 cli: $(TARGET)
 
@@ -99,7 +109,10 @@ $(BUILD_DIR)/moc_monitor_adapter.cpp: gui/monitor_adapter.h | $(BUILD_DIR)
 $(BUILD_DIR)/moc_localization.cpp: gui/localization.h | $(BUILD_DIR)
 	"$(MOC6)" -f localization.h -o "$@" "$<"
 
-$(BUILD_DIR)/i18n/%.qm: gui/i18n/%.ts | $(BUILD_DIR)
+catalog-check:
+	python3 -B tools/catalogs.py --check
+
+$(BUILD_DIR)/i18n/%.qm: gui/i18n/%.ts | $(BUILD_DIR) catalog-check
 	install -d -m 0755 "$(BUILD_DIR)/i18n"
 	"$(LRELEASE6)" -silent -fail-on-unfinished -fail-on-invalid "$<" -qm "$@"
 
@@ -116,8 +129,7 @@ $(GUI_QRC_FILE): $(GUI_QML) $(GUI_QM) | $(BUILD_DIR)
 		'<file alias="qml/InventoryView.qml">$(abspath gui/qml/InventoryView.qml)</file>' \
 		'<file alias="qml/InformationView.qml">$(abspath gui/qml/InformationView.qml)</file>' \
 		'<file alias="qml/ProcessInspector.qml">$(abspath gui/qml/ProcessInspector.qml)</file>' \
-		'<file alias="i18n/synapse-monitor_en_US.qm">$(abspath $(BUILD_DIR)/i18n/synapse-monitor_en_US.qm)</file>' \
-		'<file alias="i18n/synapse-monitor_it_IT.qm">$(abspath $(BUILD_DIR)/i18n/synapse-monitor_it_IT.qm)</file>' \
+		$(foreach qm,$(GUI_QM),'<file alias="i18n/$(notdir $(qm))">$(abspath $(qm))</file>') \
 		'</qresource></RCC>' >"$@"
 
 $(GUI_RCC): $(GUI_QRC_FILE) | $(BUILD_DIR)
@@ -142,20 +154,36 @@ $(GUI_TEST_BINARY): tests/test_gui_adapter.cpp gui/monitor_adapter.cpp \
 		$(BUILD_DIR)/moc_monitor_adapter.cpp $(BASE_LDFLAGS) $(LDFLAGS) \
 		$$( $(PKG_CONFIG) --libs $(GUI_TEST_PACKAGES) )
 
-test: $(ALL_TARGETS) $(if $(filter 1,$(GUI_ENABLED)),$(GUI_TEST_BINARY))
+test: $(ALL_TARGETS) $(if $(filter 1,$(GUI_ENABLED)),$(GUI_TEST_BINARY) $(BUILD_DIR)/test-localization)
 	./tests/run.sh "$(abspath $(TARGET))"
+	python3 -B tests/test_distribution.py
+	python3 -B tests/test_catalog_validation.py
+	python3 -B tests/test_cli_locales.py "$(abspath $(TARGET))"
 ifeq ($(GUI_ENABLED),1)
 	./tests/gui-run.sh "$(abspath $(TARGET))" "$(abspath $(GUI_BINARY))" \
 		"$(abspath $(GUI_TEST_BINARY))"
+	QT_QPA_PLATFORM=offscreen "$(BUILD_DIR)/test-localization"
+	python3 -B tests/localization-fixtures.py "$(abspath $(BUILD_DIR))" "$(CXX)"
 endif
 
-install: $(ALL_TARGETS)
-	install -D -m 0755 "$(TARGET)" "$(DESTDIR)$(BINDIR)/synapse-monitor"
-ifeq ($(GUI_ENABLED),1)
+$(BUILD_DIR)/test-localization: tests/test_localization.cpp gui/localization.cpp gui/localization.h gui/locales.inc $(BUILD_DIR)/moc_localization.cpp $(GUI_RCC)
+	$(CXX) $(BASE_CPPFLAGS) $(CPPFLAGS) $(BASE_CXXFLAGS) $(CXXFLAGS) $(REPRO_FLAGS) $(GUI_CXX_COMPAT) -Igui \
+		$$( $(PKG_CONFIG) --cflags Qt6Gui ) -o "$@" tests/test_localization.cpp gui/localization.cpp \
+		$(BUILD_DIR)/moc_localization.cpp $(GUI_RCC) $(BASE_LDFLAGS) $(LDFLAGS) $$( $(PKG_CONFIG) --libs Qt6Gui )
+
+install: install-cli $(if $(filter 1,$(GUI_ENABLED)),install-gui)
+
+install-gui: $(GUI_BINARY)
 	install -D -m 0755 "$(GUI_BINARY)" "$(DESTDIR)$(BINDIR)/synapse-monitor-gui"
 	install -D -m 0644 data/org.synapse.Monitor.desktop \
 		"$(DESTDIR)$(DATADIR)/applications/org.synapse.Monitor.desktop"
-endif
+	install -D -m 0644 LICENSE "$(DESTDIR)$(DATADIR)/licenses/synapse-monitor-gui/LICENSE"
+	install -D -m 0644 gui/i18n/coverage.json "$(DESTDIR)$(DATADIR)/doc/synapse-monitor-gui/catalog-coverage.json"
+	install -D -m 0644 gui/i18n/locales.json "$(DESTDIR)$(DATADIR)/doc/synapse-monitor-gui/locales.json"
+	install -D -m 0644 docs/localization.md "$(DESTDIR)$(DATADIR)/doc/synapse-monitor-gui/localization.md"
+
+install-cli: $(TARGET)
+	install -D -m 0755 "$(TARGET)" "$(DESTDIR)$(BINDIR)/synapse-monitor"
 	install -D -m 0644 README.md "$(DESTDIR)$(DATADIR)/doc/synapse-monitor/README.md"
 	install -D -m 0644 CHANGELOG.md "$(DESTDIR)$(DATADIR)/doc/synapse-monitor/CHANGELOG.md"
 	install -D -m 0644 docs/architecture.md \

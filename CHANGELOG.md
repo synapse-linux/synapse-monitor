@@ -1,4 +1,18 @@
+<!-- SPDX-License-Identifier: MIT -->
 # Changelog
+
+## 0.5.0-alpha.13
+
+- Ship all 64 pinned GUI catalogs with honest per-catalog coverage: 62 remain
+  explicit English development fallback, not complete translations.
+- Reject malformed locale prefixes; load a permanent English fallback underneath
+  selected catalogs, honor session precedence, and mirror RTL presentation.
+- Separate core and GUI installation payloads; core-only builds do not probe Qt.
+- Add catalog, locale, missing-resource, CLI-invariance and distribution tests.
+- Keep the Alpha 12 operational core and stream/model boundaries unchanged.
+- Development source candidate: source integration/publication, package release
+  and native acceptance are separate gates; no shared graphical plugin compliance
+  claim. Complete MIT SPDX markers in first-party documentation.
 
 ## 0.5.0-alpha.12
 
@@ -47,7 +61,7 @@
 
 - Keep the validated frame and table visible while changing presentation order; header sorting is now an immediate native-model transform with no child restart, loading overlay or stream-sequence flash.
 - Toggle ascending and descending order on repeated header activation, keep unavailable values last in both directions and use stable row identity as the deterministic tie-breaker.
-- Add bounded Excel-style per-column value filters with search, select-all/select-none, apply and clear actions; QML receives opaque native tokens and never constructs filter argv.
+- Add bounded per-column value filters with search, select-all/select-none, apply and clear actions; QML receives opaque native tokens and never constructs filter argv.
 - Apply the existing loaded-row search locally and raise the bounded GUI cohort to the contract maximum of 512 rows.
 - Preserve process inspection identity and validated payload state while rows reorder or filters change.
 - Replace the ambiguous compact locale control with the explicit `Language/Lingua: Italiano/English` selector.

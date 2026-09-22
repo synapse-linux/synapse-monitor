@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MIT -->
 # Synapse Monitor agent contract
 
 - The first-party runtime core is C17 and must remain useful without a GUI.

@@ -553,7 +553,7 @@ private slots:
         QCOMPARE(adapter.sortId(), QStringLiteral("class"));
     }
 
-    void excelStyleColumnFiltersStayTypedAndLocal() {
+    void columnValueFiltersStayTypedAndLocal() {
         MonitorAdapter adapter(core());
         QSignalSpy accepted(&adapter, &MonitorAdapter::frameAccepted);
         QSignalSpy stateChanged(&adapter, &MonitorAdapter::stateChanged);

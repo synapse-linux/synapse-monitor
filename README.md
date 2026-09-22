@@ -1,10 +1,16 @@
+<!-- SPDX-License-Identifier: MIT -->
 # Synapse Monitor
 
 Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
 Its C17 core provides a dense terminal interface and versioned JSON contracts
 without requiring a graphical session.
 
-Alpha 12 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. Every visible table column sorts immediately in the validated native model, toggles direction without restarting the stream, and provides a bounded Excel-style value filter. Real process and inventory tables instantiate only viewport rows, reuse delegates and reconcile native model changes incrementally by stable identity; inactive loaded rows remain typed native data rather than thousands of QML objects. The default stream cadence is 2,000 ms and remains selectable from a fixed native allowlist. There is no in-window language selector; locale is selected once at launch. One unified GPU summary labels utilization and memory separately; GPU memory is represented with driver-reported, shared or unavailable semantics. A fresh secure root-owned collector can provide global i915 GEM allocation and complete process-PSS observations without increasing Monitor privileges; the GUI adds those two components into an explicit observed-memory footprint while retaining kernel-used and physical-capacity values separately. Guarded previews retain host connection tables while denying IPv4/IPv6 socket authority. The GUI disables process-scoped transparent huge pages, uses Qt Quick's software graphics API and deterministic Basic controls, and reclaims destroyed QML views after real view transitions. Routine process sampling reuses static metadata and never reads process command lines. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
+Alpha 13 adds the complete pinned 64-locale GUI catalog set, explicit development
+fallback coverage, strict launch-locale selection, RTL mirroring and separate
+core/GUI installation targets. The 62 new catalogs contain English fallback,
+not reviewed translations. Native acceptance is not inherited for this delta.
+
+Alpha 12 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. Every visible table column sorts immediately in the validated native model, toggles direction without restarting the stream, and provides a bounded per-column value filter. Real process and inventory tables instantiate only viewport rows, reuse delegates and reconcile native model changes incrementally by stable identity; inactive loaded rows remain typed native data rather than thousands of QML objects. The default stream cadence is 2,000 ms and remains selectable from a fixed native allowlist. There is no in-window language selector; locale is selected once at launch. One unified GPU summary labels utilization and memory separately; GPU memory is represented with driver-reported, shared or unavailable semantics. A fresh secure root-owned collector can provide global i915 GEM allocation and complete process-PSS observations without increasing Monitor privileges; the GUI adds those two components into an explicit observed-memory footprint while retaining kernel-used and physical-capacity values separately. Guarded previews retain host connection tables while denying IPv4/IPv6 socket authority. The GUI disables process-scoped transparent huge pages, uses Qt Quick's software graphics API and deterministic Basic controls, and reclaims destroyed QML views after real view transitions. Routine process sampling reuses static metadata and never reads process command lines. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
 
 1. **Processes** — bounded application, system and kernel groups with CPU,
    memory, I/O, state, thread, PID and user observations.
@@ -29,7 +35,7 @@ basenames, and descriptor/socket counts. It never exposes module paths,
 descriptor targets, command lines or environments.
 
 There are no kill, signal, dump, priority, service, startup, cgroup,
-connection-control or privilege operations. The program constructs no
+connection-control or privilege operations. The C17 core constructs no
 subprocess command, opens no network socket or listener, and sends no telemetry.
 
 ## Build and test
@@ -85,11 +91,18 @@ The normal GUI has no executable-path option. An absolute backend override is
 accepted only with explicit test authority for isolated qualification.
 
 The GUI requests generic `monospace`, leaving the concrete global family to
-Fontconfig, and currently ships the same provisional `en_US` and `it_IT`
-catalogue boundary as other early Synapse GUIs. It selects the session or
-explicit launch locale once and exposes no language control in the application
-window. Expansion to the pinned locale set remains a release gate. Details are
-in `docs/gui-contracts.md`.
+Fontconfig. All 64 pinned catalogs are embedded and package-owned. `en_US` and
+`it_IT` contain authored copy; the other 62 explicitly retain English fallback.
+Coverage is recorded in `gui/i18n/coverage.json`; this is not production-complete
+translation. Missing messages/catalogs fall back to en_US; a missing English
+catalog fails closed. Selection occurs once before QML loads, with no in-window
+language control. See `docs/localization.md` and `docs/gui-contracts.md`.
+
+`make BUILD_GUI=0 install-cli` installs no GUI, Qt dependency, desktop entry or
+service. `make BUILD_GUI=1 install-gui` installs only the GUI payload and requires
+the matching core package. `install` retains combined developer staging. This
+standalone GUI is not yet compliant with the future shared graphical plugin
+contract; a desktop entry is not a plugin implementation or a selected pilot.
 
 Full paths, raw launch commands, authentication credentials, secrets and serial
 numbers remain private. Safe executable basenames, semantic source scopes,
@@ -113,5 +126,8 @@ that cache fails validation, use or the observed footprint remains independently
 unavailable rather than being inferred from total RAM or Shmem. Driver-unexposed values remain
 `null` or `unavailable`, not fabricated zeroes.
 
-The CLI contract remains provisional during Alpha 4, so translated manual pages
-remain deferred until the command surface is definitive.
+The CLI contract remains provisional in this Alpha candidate, so translated manual
+pages remain deferred until the command surface is definitive. Source integration
+on `develop` does not constitute a signed package release, native acceptance or
+permission to deploy. See `docs/source-status.md` in the source tree for the
+remaining gates.

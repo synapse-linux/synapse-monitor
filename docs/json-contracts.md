@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MIT -->
 # JSON contracts
 
 Machine output is locale-neutral, contains one object, and ends with one newline.

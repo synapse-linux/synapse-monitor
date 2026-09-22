@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MIT -->
 # Graphical presentation contracts
 
 The Alpha 12 graphical shell is a separate, presentation-only consumer. The C17

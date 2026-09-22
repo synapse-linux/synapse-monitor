@@ -6,10 +6,12 @@ core=${1:?core binary required}
 gui=${2:?gui binary required}
 adapter_test=${3:?adapter test required}
 repo=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=tests/assert-no-match.sh
+source "$repo/tests/assert-no-match.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.12' ]]
+[[ $(QT_QPA_PLATFORM=offscreen "$gui" --version) == 'synapse-monitor-gui 0.5.0-alpha.13' ]]
 set +e
 QT_QPA_PLATFORM=offscreen timeout 2 "$gui" --backend "$core" \
   >"$work/refused.stdout" 2>"$work/refused.stderr"
@@ -34,7 +36,7 @@ for view in processes performance services startup connections information; do
   test -s "$work/$view.png"
   grep -Fq 'synapse-monitor-gui: typography=monospace resolved=' "$work/$view.stderr"
   grep -Fq 'synapse-monitor-gui: renderer=software controls=Basic transparent-huge-pages=disabled' "$work/$view.stderr"
-  ! grep -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
+  require_no_match -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
     "$work/$view.stderr"
 done
 
@@ -46,8 +48,17 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QSG_RHI_BACKEND=software \
 test -s "$work/sibling-discovery.png"
 grep -Fq 'synapse-monitor-gui: renderer=software controls=Basic transparent-huge-pages=disabled' \
   "$work/sibling-discovery.stderr"
-! grep -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
+require_no_match -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' \
   "$work/sibling-discovery.stderr"
+
+for locale in ar fa he; do
+  QT_QPA_PLATFORM=offscreen QML_DISABLE_DISK_CACHE=1 "$gui" --view information \
+    --locale "$locale" --test-exit-after-frames 1 --test-ready-timeout 10000 \
+    --test-window-size 900x600 --test-grab "$work/rtl-$locale.png" \
+    >"$work/rtl-$locale.stdout" 2>"$work/rtl-$locale.stderr"
+  test -s "$work/rtl-$locale.png"
+  require_no_match -Eiq 'qrc:|QQml|TypeError|ReferenceError|Unable to assign|binding loop' "$work/rtl-$locale.stderr"
+done
 
 python3 - "$repo/gui/i18n/synapse-monitor_en_US.ts" \
   "$repo/gui/i18n/synapse-monitor_it_IT.ts" <<'PY'
@@ -119,10 +130,10 @@ grep -Fq 'QQuickStyle::setStyle(QStringLiteral("Basic"))' "$repo/gui/main.cpp"
 grep -Fq 'engine.collectGarbage()' "$repo/gui/main.cpp"
 grep -Fq 'engine.trimComponentCache()' "$repo/gui/main.cpp"
 grep -Fq 'malloc_trim(0)' "$repo/gui/main.cpp"
-! grep -Fq 'non-additive' "$repo/gui/i18n/synapse-monitor_en_US.ts"
-! grep -Fq 'non additiva' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
+require_no_match -Fq 'non-additive' "$repo/gui/i18n/synapse-monitor_en_US.ts"
+require_no_match -Fq 'non additiva' "$repo/gui/i18n/synapse-monitor_it_IT.ts"
 
-! grep -R -n -E '(/usr/bin|/usr/local|QProcess|subprocess|Process\s*\{|argv|system\(|popen\(|shell)' \
+require_no_match -R -n -E '(/usr/bin|/usr/local|QProcess|subprocess|Process\s*\{|argv|system\(|popen\(|shell)' \
   "$repo/gui/qml"
 grep -R -q 'monitorAdapter.selectView' "$repo/gui/qml"
 grep -R -q 'monitorAdapter.setIntervalMilliseconds' "$repo/gui/qml"
