@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.synapse.local/monitor/stream-frame-v1.schema.json",
+  "title": "Synapse Monitor stream frame metadata v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "sequence", "intervalMilliseconds"],
+  "properties": {
+    "schema": {
+      "const": "synapse.monitor.stream-frame/v1"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "intervalMilliseconds": {
+      "type": "integer",
+      "minimum": 250,
+      "maximum": 10000
+    }
+  }
+}

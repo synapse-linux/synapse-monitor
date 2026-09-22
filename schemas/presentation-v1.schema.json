@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.synapse.local/monitor/presentation-v1.schema.json",
+  "title": "Synapse Monitor graphical presentation capabilities v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "readOnly",
+    "producer",
+    "formats",
+    "views",
+    "inspection",
+    "sampling",
+    "history",
+    "units",
+    "availability",
+    "localization",
+    "authority",
+    "privacy"
+  ],
+  "properties": {
+    "schema": {
+      "const": "synapse.monitor.presentation/v1"
+    },
+    "readOnly": {
+      "const": true
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"const": "synapse-monitor"},
+        "version": {"type": "string", "maxLength": 64}
+      }
+    },
+    "formats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshot", "stream"],
+      "properties": {
+        "snapshot": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "mediaType", "framing"],
+            "properties": {
+              "id": {"enum": ["text", "json"]},
+              "mediaType": {"enum": ["text/plain", "application/json"]},
+              "framing": {
+                "enum": ["single-document", "single-object-one-line"]
+              }
+            }
+          }
+        },
+        "stream": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "mediaType",
+            "framing",
+            "payload",
+            "streamMetadataSchema",
+            "maximumLineBytes",
+            "sequenceStartsAt",
+            "backpressure",
+            "errorChannel"
+          ],
+          "properties": {
+            "id": {"const": "ndjson"},
+            "mediaType": {"const": "application/x-ndjson"},
+            "framing": {"const": "one-complete-object-per-line"},
+            "payload": {"const": "complete-view-snapshot"},
+            "streamMetadataSchema": {
+              "const": "synapse.monitor.stream-frame/v1"
+            },
+            "maximumLineBytes": {"const": 2097152},
+            "sequenceStartsAt": {"const": 0},
+            "backpressure": {"const": "blocking"},
+            "errorChannel": {"const": "stderr"}
+          }
+        }
+      }
+    },
+    "views": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {"$ref": "#/$defs/view"}
+    },
+    "inspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "identity", "streamable"],
+      "properties": {
+        "schema": {"const": "synapse.monitor.process-inspection/v1"},
+        "identity": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "pid"},
+            {"const": "startTicks"}
+          ],
+          "items": false
+        },
+        "streamable": {"const": false}
+      }
+    },
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sampleMilliseconds", "intervalMilliseconds", "rowLimit"],
+      "properties": {
+        "sampleMilliseconds": {"$ref": "#/$defs/boundedDefault"},
+        "intervalMilliseconds": {"$ref": "#/$defs/boundedDefault"},
+        "rowLimit": {"$ref": "#/$defs/boundedDefault"}
+      }
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximumSamples",
+        "ordering",
+        "unavailableSample",
+        "measuredZeroDistinctFromUnavailable"
+      ],
+      "properties": {
+        "maximumSamples": {"const": 60},
+        "ordering": {"const": "oldest-to-newest"},
+        "unavailableSample": {"type": "null"},
+        "measuredZeroDistinctFromUnavailable": {"const": true}
+      }
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "utilization",
+        "memory",
+        "rate",
+        "temperature",
+        "frequency",
+        "power",
+        "fan",
+        "uptime"
+      ],
+      "properties": {
+        "utilization": {"const": "milli-percent"},
+        "memory": {"const": "bytes"},
+        "rate": {"const": "bytes-per-second"},
+        "temperature": {"const": "millidegrees-celsius"},
+        "frequency": {"const": "hertz"},
+        "power": {"const": "microwatts"},
+        "fan": {"const": "rpm"},
+        "uptime": {"const": "seconds"}
+      }
+    },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unavailableNumeric",
+        "measuredZero",
+        "partialRowsRetained"
+      ],
+      "properties": {
+        "unavailableNumeric": {"type": "null"},
+        "measuredZero": {"const": 0},
+        "partialRowsRetained": {"const": true}
+      }
+    },
+    "localization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifiers", "humanLabelsOwnedByGui", "runtimeSelector", "selection"],
+      "properties": {
+        "identifiers": {"const": "locale-neutral"},
+        "humanLabelsOwnedByGui": {"const": true},
+        "runtimeSelector": {"const": false},
+        "selection": {"const": "launch-or-session"}
+      }
+    },
+    "authority": {"$ref": "#/$defs/allFalse"},
+    "privacy": {"$ref": "#/$defs/allFalse"}
+  },
+  "$defs": {
+    "boundedDefault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum", "default"],
+      "properties": {
+        "minimum": {"type": "integer", "minimum": 0},
+        "maximum": {"type": "integer", "minimum": 1},
+        "default": {"type": "integer", "minimum": 0}
+      }
+    },
+    "filter": {
+      "type": "object",
+      "required": ["supported"],
+      "properties": {
+        "supported": {"type": "boolean"},
+        "maximumBytes": {"type": "integer", "minimum": 1, "maximum": 64},
+        "characterSet": {"const": "printable-ascii"}
+      },
+      "additionalProperties": false
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ordinal",
+        "schema",
+        "streamable",
+        "filter",
+        "sort",
+        "group",
+        "columns",
+        "defaultColumns",
+        "rowIdentity"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "processes",
+            "performance",
+            "services",
+            "startup",
+            "connections",
+            "information"
+          ]
+        },
+        "ordinal": {"type": "integer", "minimum": 1, "maximum": 6},
+        "schema": {
+          "enum": [
+            "synapse.monitor.snapshot/v1",
+            "synapse.monitor.performance/v2",
+            "synapse.monitor.services/v1",
+            "synapse.monitor.startup/v1",
+            "synapse.monitor.connections/v1",
+            "synapse.monitor.information/v1"
+          ]
+        },
+        "streamable": {"const": true},
+        "filter": {"$ref": "#/$defs/filter"},
+        "sort": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 32},
+          "uniqueItems": true
+        },
+        "group": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 32},
+          "uniqueItems": true
+        },
+        "columns": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 32},
+          "uniqueItems": true
+        },
+        "defaultColumns": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 32},
+          "uniqueItems": true
+        },
+        "rowIdentity": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 64},
+          "uniqueItems": true
+        }
+      }
+    },
+    "allFalse": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"const": false}
+    }
+  }
+}
