@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT
+[Desktop Entry]
+Type=Application
+Name=Synapse Monitor
+Name[it]=Monitor Synapse
+Comment=Read-only local system inspector
+Comment[it]=Ispettore locale di sistema in sola lettura
+Exec=synapse-monitor-gui
+Icon=utilities-system-monitor
+Terminal=false
+Categories=System;Monitor;
+StartupWMClass=org.synapse.Monitor

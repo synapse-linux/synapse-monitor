@@ -1,7 +1,10 @@
+<!-- SPDX-License-Identifier: MIT -->
 # Synapse Monitor agent contract
 
 - The first-party runtime core is C17 and must remain useful without a GUI.
 - Human CLI/TUI output is deterministic `en_US`; JSON identifiers and values are locale-neutral.
+- A graphical shell is presentation-only. Its native adapter owns fixed argv and process lifetime; QML never constructs commands, argv, executable paths or shell text.
+- GUI streams use bounded NDJSON full frames, strict sequence/schema checks and nullable unavailable samples; measured zero must remain distinct.
 - Read only bounded local `/proc` and `/sys` observations. Report coverage gaps and races explicitly.
 - Cap process scans, output rows, file sizes, devices, interfaces, filters and refresh intervals.
 - Never expose command lines, environment, credentials, tokens, canonical paths or process-owned file contents.

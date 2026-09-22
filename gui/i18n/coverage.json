@@ -1,0 +1,266 @@
+{
+  "schema": "synapse.monitor.catalog-coverage/v1",
+  "productionComplete": false,
+  "reviewedLocales": [
+    "en_US",
+    "it_IT"
+  ],
+  "catalogs": {
+    "ar": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "as": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ast": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "az": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "az_AZ": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "be": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "bg": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "bn": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ca": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ca@valencia": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "cs_CZ": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "da": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "de": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "el": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "en_US": {
+      "authored": 157,
+      "fallback": 0
+    },
+    "en_GB": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "eo": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "es": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "es_AR": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "es_MX": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "et": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "eu": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "fa": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "fi_FI": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "fr": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "fur": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "gl": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "he": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "hi": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "hr": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "hu": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ia": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "id": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "is": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "it_IT": {
+      "authored": 157,
+      "fallback": 0
+    },
+    "ja": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ka": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ko": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "lt": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ml": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "mr": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "nb": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "nl": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "oc": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "pl": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "pt_BR": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "pt_PT": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ro": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "ru": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "si": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "sk": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "sl": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "sq": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "sr": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "sr@latin": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "sv": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "tg": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "th": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "tr_TR": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "uk": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "uz": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "vi": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "zh_CN": {
+      "authored": 0,
+      "fallback": 157
+    },
+    "zh_TW": {
+      "authored": 0,
+      "fallback": 157
+    }
+  }
+}

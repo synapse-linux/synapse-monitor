@@ -1,3 +1,133 @@
+<!-- SPDX-License-Identifier: MIT -->
 # Synapse Monitor
 
-First-party read-only system inspection for Synapse Linux. Development follows Git Flow; the first bounded CLI/TUI slice is implemented on a feature branch.
+Synapse Monitor is a first-party, read-only system inspector for Synapse Linux.
+Its C17 core provides a dense terminal interface and versioned JSON contracts
+without requiring a graphical session.
+
+Alpha 13 adds the complete pinned 64-locale GUI catalog set, explicit development
+fallback coverage, strict launch-locale selection, RTL mirroring and separate
+core/GUI installation targets. The 62 new catalogs contain English fallback,
+not reviewed translations. Native acceptance is not inherited for this delta.
+
+Alpha 12 refines the first-party native Qt adapter and responsive graphical shell over the accepted Alpha 4 contracts. Every visible table column sorts immediately in the validated native model, toggles direction without restarting the stream, and provides a bounded per-column value filter. Real process and inventory tables instantiate only viewport rows, reuse delegates and reconcile native model changes incrementally by stable identity; inactive loaded rows remain typed native data rather than thousands of QML objects. The default stream cadence is 2,000 ms and remains selectable from a fixed native allowlist. There is no in-window language selector; locale is selected once at launch. One unified GPU summary labels utilization and memory separately; GPU memory is represented with driver-reported, shared or unavailable semantics. A fresh secure root-owned collector can provide global i915 GEM allocation and complete process-PSS observations without increasing Monitor privileges; the GUI adds those two components into an explicit observed-memory footprint while retaining kernel-used and physical-capacity values separately. Guarded previews retain host connection tables while denying IPv4/IPv6 socket authority. The GUI disables process-scoped transparent huge pages, uses Qt Quick's software graphics API and deterministic Basic controls, and reclaims destroyed QML views after real view transitions. Routine process sampling reuses static metadata and never reads process command lines. The C17 executable remains independently useful in a console. Alpha 3 corrected the earlier GPU/thermal gap:
+
+1. **Processes** — bounded application, system and kernel groups with CPU,
+   memory, I/O, state, thread, PID and user observations.
+2. **Performance** — overall and logical-processor CPU activity, RAM,
+   bounded multi-GPU inventory and optional local PCI model label, driver-exposed utilization/VRAM, temperature,
+   core/memory clocks, power/cap and fan speed, CPU/GPU/storage/battery/system
+   temperatures, general fans, per-physical-disk rates, per-interface network
+   rates and a 60-sample terminal history.
+3. **Services** — name, description, active state, startup state, PID, user and
+   a safe executable label.
+4. **Startup Apps** — name, publisher when declared, state, type, semantic
+   location and a safe command label with arguments redacted.
+5. **Connections** — TCP/UDP protocol, local and remote endpoint, state and
+   bounded socket-inode correlation to PID/process identity.
+6. **Information** — operating system, kernel, architecture, processor,
+   system model, physical memory, firmware and uptime without host names or
+   serial numbers.
+
+Explicit process inspection also reports PID/start-time identity, Linux
+UID/GID and capability metadata, seccomp/no-new-privileges state, module
+basenames, and descriptor/socket counts. It never exposes module paths,
+descriptor targets, command lines or environments.
+
+There are no kill, signal, dump, priority, service, startup, cgroup,
+connection-control or privilege operations. The C17 core constructs no
+subprocess command, opens no network socket or listener, and sends no telemetry.
+
+## Build and test
+
+```bash
+make clean all test
+```
+
+When the Qt 6 Core/Gui/QML/Quick/QuickControls2/Test SDK is available, `all`
+and `test` also build and qualify `synapse-monitor-gui`. `BUILD_GUI=0` keeps an
+explicit core-only build; `BUILD_GUI=1` fails closed when the GUI SDK is absent.
+
+## Use
+
+```bash
+synapse-monitor snapshot
+synapse-monitor snapshot --view performance --format json
+synapse-monitor describe --format json
+synapse-monitor stream --view performance --format ndjson --interval-ms 750
+synapse-monitor snapshot --view services --sort startup
+synapse-monitor snapshot --view startup --filter portal
+synapse-monitor snapshot --view connections --sort local
+synapse-monitor snapshot --view information
+synapse-monitor inspect --pid 1234 --format json
+synapse-monitor watch
+synapse-monitor-gui
+```
+
+Interactive watch keys:
+
+- `1`–`6` or Tab select a view;
+- start typing or press `/` to filter the current table;
+- uppercase `S`, `G`, and `C` cycle reviewed sorting, grouping and column sets;
+- uppercase `L` and `T` cycle dense/balanced/wide layouts and default/contrast/mono themes;
+- uppercase `Q` exits.
+
+Human output is deterministic `en_US`. Machine output is locale-neutral and
+uses exact-major contracts documented in `docs/json-contracts.md`. `describe`
+provides the closed capability catalogue; `stream` emits bounded full-view
+NDJSON frames with stable sequence and row identities for a native GUI adapter.
+Unknown views, formats, options, identifiers, duplicate columns and oversized
+inputs fail closed.
+
+QML remains presentation-only: it translates identifiers and chooses responsive
+layout, typography, color, charts and accessibility. The native adapter discovers
+the sibling or installed C17 core without a shell; owns fixed argv and child
+lifetime; enforces the 2 MiB line cap, exact schema majors, contiguous sequence,
+stable identities and bounded stderr; and discards stale process inspection.
+It also owns deterministic local ordering, direction and finite per-column filter
+tokens over at most 512 validated rows. These presentation changes never restart
+the child or clear the currently validated frame.
+The normal GUI has no executable-path option. An absolute backend override is
+accepted only with explicit test authority for isolated qualification.
+
+The GUI requests generic `monospace`, leaving the concrete global family to
+Fontconfig. All 64 pinned catalogs are embedded and package-owned. `en_US` and
+`it_IT` contain authored copy; the other 62 explicitly retain English fallback.
+Coverage is recorded in `gui/i18n/coverage.json`; this is not production-complete
+translation. Missing messages/catalogs fall back to en_US; a missing English
+catalog fails closed. Selection occurs once before QML loads, with no in-window
+language control. See `docs/localization.md` and `docs/gui-contracts.md`.
+
+`make BUILD_GUI=0 install-cli` installs no GUI, Qt dependency, desktop entry or
+service. `make BUILD_GUI=1 install-gui` installs only the GUI payload and requires
+the matching core package. `install` retains combined developer staging. This
+standalone GUI is not yet compliant with the future shared graphical plugin
+contract; a desktop entry is not a plugin implementation or a selected pilot.
+
+Full paths, raw launch commands, authentication credentials, secrets and serial
+numbers remain private. Safe executable basenames, semantic source scopes,
+numeric kernel credential metadata and non-identifying sensor labels are
+deliberately distinguished from those private values.
+
+Every hardware field has explicit availability. In particular, Synapse Monitor
+never substitutes CPU-package temperature for an integrated GPU that has no
+dedicated kernel temperature sensor. GPU memory is shown explicitly: a dedicated driver counter remains
+driver-reported graphics memory. For integrated i915, Monitor may read the
+existing root-owned `synapse_memory.prom` cache only when it is regular,
+non-writable by group/others, at most 128 KiB, at most 120 seconds old, unchanged
+while read, and contains unique exact metrics. This supplies global GEM allocated
+bytes without elevating Monitor; the total shared pool remains `null` because it
+is not a separate fixed pool. When the same cache also proves a complete process
+PSS scan, Monitor reports `observedFootprintBytes = processPssBytes +
+sharedGpuBytes` and presents that accounting total explicitly. The raw kernel
+used-RAM estimate and physical capacity remain separate, and the contract still
+marks possible component overlap rather than claiming extra physical RAM. If
+that cache fails validation, use or the observed footprint remains independently
+unavailable rather than being inferred from total RAM or Shmem. Driver-unexposed values remain
+`null` or `unavailable`, not fabricated zeroes.
+
+The CLI contract remains provisional in this Alpha candidate, so translated manual
+pages remain deferred until the command surface is definitive. Source integration
+on `develop` does not constitute a signed package release, native acceptance or
+permission to deploy. See `docs/source-status.md` in the source tree for the
+remaining gates.
